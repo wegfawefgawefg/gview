@@ -29,7 +29,8 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
     const ImVec2 origin{(io.DisplaySize.x - static_cast<float>(state.preview.width) * scale) * 0.5f,
                         (io.DisplaySize.y - static_cast<float>(state.preview.height) * scale) *
                             0.5f};
-    ImDrawList* draw = ImGui::GetForegroundDrawList();
+    // Keep canvas diagnostics above the native preview but below editor windows.
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
     const ImVec2 mouse = io.MousePos;
     NodeIndex hovered = invalid_node;
     for (NodeIndex reverse = static_cast<NodeIndex>(compiled.nodes.size()); reverse > 0;
