@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <limits>
+#include <queue>
 
 namespace gview {
 namespace {
@@ -47,8 +48,7 @@ float direction_score(glayout::Rect source, glayout::Rect target, NavAction acti
 // Finds a deterministic initial target without assuming a pointer cursor.
 NodeIndex first_focus(const CompiledView& view, const NodeAvailable& available) {
     for (NodeIndex index = 0; index < view.nodes.size(); ++index) {
-        if (view.nodes[index].source.focusable && available(index))
-            return index;
+        if (view.nodes[index].source.focusable && available(index)) return index;
     }
     return invalid_node;
 }
@@ -59,8 +59,7 @@ NodeIndex next_focus(const CompiledView& view, const std::vector<glayout::Resolv
     if (current == invalid_node || current >= view.nodes.size())
         return first_focus(view, available);
     for (const CompiledFocusEdge& edge : view.focus_edges) {
-        if (edge.from == current && edge.action == action && available(edge.to))
-            return edge.to;
+        if (edge.from == current && edge.action == action && available(edge.to)) return edge.to;
     }
     if (action == NavAction::TabPrevious || action == NavAction::TabNext) {
         const int step = action == NavAction::TabPrevious ? -1 : 1;
@@ -76,8 +75,7 @@ NodeIndex next_focus(const CompiledView& view, const std::vector<glayout::Resolv
         }
         return current;
     }
-    if (!directional(action))
-        return current;
+    if (!directional(action)) return current;
 
     const glayout::Rect source = geometry[view.nodes[current].layout_index].border;
     NodeIndex best = current;
@@ -98,14 +96,56 @@ NodeIndex next_focus(const CompiledView& view, const std::vector<glayout::Resolv
 
 // Looks up the authored local focus scope for back and memory behavior.
 const CompiledFocusGroup* focus_group_for(const CompiledView& view, NodeIndex node) {
-    if (node == invalid_node || node >= view.nodes.size())
-        return nullptr;
+    if (node == invalid_node || node >= view.nodes.size()) return nullptr;
     const std::string& id = view.nodes[node].source.focus_group;
     for (const CompiledFocusGroup& group : view.focus_groups) {
-        if (group.id == id)
-            return &group;
+        if (group.id == id) return &group;
     }
     return nullptr;
+}
+
+// Audits reachability using the same explicit, geometric, scope-entry, and Back
+// rules as runtime.
+std::vector<FocusIssue> analyze_focus_graph(const CompiledView& view,
+                                            const std::vector<glayout::ResolvedNode>& geometry) {
+    std::vector<FocusIssue> issues;
+    if (geometry.size() < view.layout.nodes.size()) return issues;
+    const auto available = [&](NodeIndex index) {
+        return index < view.nodes.size() && view.nodes[index].source.focusable &&
+               view.nodes[index].source.enabled;
+    };
+    const NodeIndex first = first_focus(view, available);
+    if (first == invalid_node) return issues;
+    std::vector<bool> visited(view.nodes.size(), false);
+    std::queue<NodeIndex> pending;
+    visited[first] = true;
+    pending.push(first);
+    constexpr NavAction actions[]{NavAction::Up,          NavAction::Down,    NavAction::Left,
+                                  NavAction::Right,       NavAction::Confirm, NavAction::Back,
+                                  NavAction::TabPrevious, NavAction::TabNext};
+    const auto enqueue = [&](NodeIndex target) {
+        if (target != invalid_node && target < visited.size() && available(target) &&
+            !visited[target]) {
+            visited[target] = true;
+            pending.push(target);
+        }
+    };
+    while (!pending.empty()) {
+        const NodeIndex current = pending.front();
+        pending.pop();
+        for (NavAction action : actions)
+            enqueue(next_focus(view, geometry, current, action, available));
+        for (const CompiledFocusGroup& group : view.focus_groups) {
+            if (group.owner == current) enqueue(group.entry);
+            if (focus_group_for(view, current) == &group) enqueue(group.owner);
+        }
+    }
+    for (NodeIndex index = 0; index < view.nodes.size(); ++index) {
+        if (available(index) && !visited[index])
+            issues.push_back(
+                {index, "unreachable focus target: " + view.nodes[index].source.layout_id});
+    }
+    return issues;
 }
 
 } // namespace gview

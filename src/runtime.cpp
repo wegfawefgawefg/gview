@@ -312,6 +312,14 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
             continue;
         }
         if (action == NavAction::Confirm) {
+            const NodeIndex explicit_target =
+                next_focus(view_, layout_.nodes(), focus_, action, available);
+            if (explicit_target != focus_) {
+                focus_ = explicit_target;
+                ensure_focus_visible(view_, layout_, state_, focus_);
+                paint_dirty_ = true;
+                continue;
+            }
             const auto owned_group = std::find_if(
                 view_.focus_groups.begin(), view_.focus_groups.end(),
                 [&](const CompiledFocusGroup& group) { return group.owner == focus_; });
@@ -334,6 +342,14 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
             continue;
         }
         if (action == NavAction::Back) {
+            const NodeIndex explicit_target =
+                next_focus(view_, layout_.nodes(), focus_, action, available);
+            if (explicit_target != focus_) {
+                focus_ = explicit_target;
+                ensure_focus_visible(view_, layout_, state_, focus_);
+                paint_dirty_ = true;
+                continue;
+            }
             const CompiledFocusGroup* group = focus_group_for(view_, focus_);
             if (group && group->owner != invalid_node) {
                 if (group->remember)
@@ -374,6 +390,7 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
             const glayout::ResolvedNode& geometry = layout_.nodes()[node.layout_index];
             const glayout::Rect border = shifted_rect(view_, state_, geometry.border, node.layout_index);
             const glayout::Rect content = shifted_rect(view_, state_, geometry.content, node.layout_index);
+            if (!glayout::intersects(border, geometry.clip)) continue;
             const BoxStyle& style = resolve_style(node.source, state_[index], focus_ == index);
             paint_.push_back(PaintCommand{PaintKind::Box, node.source.stratum, index, border,
                                           geometry.clip, style, {}, {}, {}, 0.0});
@@ -457,5 +474,6 @@ const std::vector<PaintCommand>& Runtime::paint() const { return paint_; }
 const std::vector<NodeState>& Runtime::state() const { return state_; }
 const RuntimeStats& Runtime::stats() const { return stats_; }
 const CompiledView& Runtime::view() const { return view_; }
+const std::vector<glayout::ResolvedNode>& Runtime::geometry() const { return layout_.nodes(); }
 
 } // namespace gview

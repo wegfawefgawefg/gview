@@ -2,6 +2,7 @@
 
 #include "gview/paint.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <unordered_map>
 
@@ -64,6 +65,8 @@ class Runtime {
     const std::vector<NodeState>& state() const;
     const RuntimeStats& stats() const;
     const CompiledView& view() const;
+    const std::vector<glayout::ResolvedNode>& geometry() const;
+    std::size_t owned_bytes() const;
 
   private:
     CompiledView view_;

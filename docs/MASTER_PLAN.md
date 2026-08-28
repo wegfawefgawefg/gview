@@ -13,6 +13,51 @@ trials, then prove that the same runtime also suits non-menu game UI.
 This document is the durable contract for the project. Compaction, iteration,
 and implementation discoveries must not silently narrow it.
 
+## Implemented production proof
+
+The first proof now exists across the standalone repositories and the shared
+trial. The implemented boundary is:
+
+- GLayout compiles nested absolute/row/column/grid/stack/overlay graphs to dense
+  geometry, handles intrinsic measurement, anchors, safe areas, clips, scroll
+  extents, responsive graph selection, stable caching, structural edits,
+  template repetition, undo/redo, and S-expression round trips.
+- GView compiles presentation and interaction to dense indices, owns retained
+  control/scroll/focus state, emits renderer-neutral paint commands, culls
+  clipped work, preserves group focus memory, supports explicit Confirm/Back as
+  well as directional overrides, and audits reachability.
+- The SDL3 adapter uses FreeType/HarfBuzz text, cached glyphs and assets,
+  scissoring, true controls, and custom native surface callbacks.
+- The optional ImGui package edits hierarchy, geometry, presentation, controls,
+  simulation state, and the directed focus graph with undo/redo/save/reload and
+  live telemetry. It is absent when its target is disabled.
+- Host-driven large collections use stable item identities and virtual visible
+  ranges; GLayout can instantiate nested repeated geometry templates
+  transactionally. Dynamic source changes rebuild the compiled view while the
+  game retains its authoritative keyed model.
+- Gubsy composes pinned standalone targets and provides typed model/event,
+  mapped semantic input, asset-root, and authoring adapters without carrying
+  copied GLayout/GView source.
+- The shared trial implements 18 states: the full shell and nested flows plus a
+  non-menu inventory/custom-world-surface proof, real assets, responsive modes,
+  mouse/keyboard/gamepad input, provider scenarios, and a hidden self-test.
+
+The measured dense 1920x1080 scrolling path is about 0.29 ms mean complete CPU
+frame on the development machine, with 0.008 ms mean update and 0.166 ms mean
+renderer recording. This is evidence for the trial workload, not a universal
+hardware guarantee. Full results and timing boundaries live beside the trial.
+
+## Deliberate follow-on boundary
+
+This milestone does not migrate Splonks or promise an AXL compatibility layer.
+After review, the next work is a diverse multi-game UI suite, then any reusable
+capability it exposes, and only then replacement of hardcoded Splonks menus.
+AXL may later compile into GView's authored representation; it must not distort
+the runtime or become a required dependency. Non-uniform collection
+virtualization can be added as a host extent-provider contract if a real game
+demonstrates the need; the current uniform range covers conventional long lists
+and grids without pretending that all variable-height cases are solved.
+
 ## Product model
 
 The Gubsy ecosystem is a composition of small, independently useful libraries:

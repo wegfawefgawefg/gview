@@ -18,9 +18,7 @@ SDL_Color color(Color source, float opacity = 1.0f) {
                      static_cast<std::uint8_t>(static_cast<float>(source.a) * opacity)};
 }
 
-SDL_FRect rect(glayout::Rect source) {
-    return SDL_FRect{source.x, source.y, source.w, source.h};
-}
+SDL_FRect rect(glayout::Rect source) { return SDL_FRect{source.x, source.y, source.w, source.h}; }
 
 void set_color(SDL_Renderer* renderer, SDL_Color value) {
     SDL_SetRenderDrawColor(renderer, value.r, value.g, value.b, value.a);
@@ -28,7 +26,8 @@ void set_color(SDL_Renderer* renderer, SDL_Color value) {
 
 } // namespace
 
-// Adapts renderer-neutral commands to SDL while retaining text and image resources.
+// Adapts renderer-neutral commands to SDL while retaining text and image
+// resources.
 Sdl3Renderer::Sdl3Renderer(SDL_Renderer* renderer, const std::string& font_path)
     : renderer_(renderer), fonts_(std::make_unique<FontSystem>(renderer, font_path)) {
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
@@ -41,9 +40,13 @@ void Sdl3Renderer::register_texture(std::string id, SDL_Texture* texture) {
     textures_[std::move(id)] = texture;
 }
 
-void Sdl3Renderer::unregister_texture(std::string_view id) {
-    textures_.erase(std::string(id));
+void Sdl3Renderer::unregister_texture(std::string_view id) { textures_.erase(std::string(id)); }
+
+void Sdl3Renderer::register_surface(std::string id, SurfaceRenderer renderer) {
+    surfaces_[std::move(id)] = std::move(renderer);
 }
+
+void Sdl3Renderer::unregister_surface(std::string_view id) { surfaces_.erase(std::string(id)); }
 
 // Draws stable paint commands in their compiled stratum order.
 void Sdl3Renderer::render(const std::vector<PaintCommand>& commands) {
@@ -63,7 +66,8 @@ void Sdl3Renderer::render(const std::vector<PaintCommand>& commands) {
         }
         if (command.kind == PaintKind::Image || command.kind == PaintKind::Sprite) {
             const auto texture = textures_.find(command.asset);
-            if (texture != textures_.end()) SDL_RenderTexture(renderer_, texture->second, nullptr, &target);
+            if (texture != textures_.end())
+                SDL_RenderTexture(renderer_, texture->second, nullptr, &target);
             continue;
         }
         if (command.kind == PaintKind::Progress) {
@@ -73,20 +77,30 @@ void Sdl3Renderer::render(const std::vector<PaintCommand>& commands) {
             SDL_RenderFillRect(renderer_, &progress);
             continue;
         }
+        if (command.kind == PaintKind::CustomSurface) {
+            const auto surface = surfaces_.find(command.asset);
+            if (surface != surfaces_.end()) surface->second(renderer_, command);
+            continue;
+        }
         if (command.kind != PaintKind::Text || command.text.empty()) continue;
         const sdl3_detail::TextLayout layout = fonts_->atlas.layout(
             command.text, command.text_style.size, target.w, command.text_style.wrap);
         float origin_x = target.x;
-        if (command.text_style.horizontal == TextAlign::Center) origin_x += (target.w - layout.width) * 0.5f;
-        else if (command.text_style.horizontal == TextAlign::End) origin_x += target.w - layout.width;
+        if (command.text_style.horizontal == TextAlign::Center)
+            origin_x += (target.w - layout.width) * 0.5f;
+        else if (command.text_style.horizontal == TextAlign::End)
+            origin_x += target.w - layout.width;
         float origin_y = target.y;
-        if (command.text_style.vertical == TextAlign::Center) origin_y += (target.h - layout.height) * 0.5f;
-        else if (command.text_style.vertical == TextAlign::End) origin_y += target.h - layout.height;
+        if (command.text_style.vertical == TextAlign::Center)
+            origin_y += (target.h - layout.height) * 0.5f;
+        else if (command.text_style.vertical == TextAlign::End)
+            origin_y += target.h - layout.height;
         const SDL_Color tint = color(command.box.text, command.box.opacity);
         SDL_SetTextureColorMod(fonts_->atlas.texture(), tint.r, tint.g, tint.b);
         SDL_SetTextureAlphaMod(fonts_->atlas.texture(), tint.a);
         for (const sdl3_detail::PositionedGlyph& glyph : layout.glyphs) {
-            const SDL_FRect glyph_target{origin_x + glyph.x, origin_y + glyph.y, glyph.width, glyph.height};
+            const SDL_FRect glyph_target{origin_x + glyph.x, origin_y + glyph.y, glyph.width,
+                                         glyph.height};
             SDL_RenderTexture(renderer_, fonts_->atlas.texture(), &glyph.source, &glyph_target);
         }
     }
