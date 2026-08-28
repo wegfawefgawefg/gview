@@ -74,6 +74,7 @@ struct NodeSpec {
     std::string binding;
     std::string action;
     std::string focus_group;
+    std::string style_class;
     std::string condition;
     std::vector<SelectOption> options;
     double minimum = 0.0;

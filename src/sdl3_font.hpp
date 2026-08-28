@@ -23,6 +23,8 @@ struct TextLayout {
     float width = 0.0f;
     float height = 0.0f;
     float ascender = 0.0f;
+    float descender = 0.0f;
+    float line_height = 0.0f;
 };
 
 class FontAtlas {
@@ -33,7 +35,9 @@ class FontAtlas {
     FontAtlas& operator=(const FontAtlas&) = delete;
 
     bool ready() const;
-    TextLayout layout(const std::string& text, float pixel_size, float maximum_width, bool wrap);
+    TextLayout layout(const std::string& text, float pixel_size, float requested_line_height,
+                      float maximum_width, bool wrap);
+    void clear();
     SDL_Texture* texture() const;
 
   private:

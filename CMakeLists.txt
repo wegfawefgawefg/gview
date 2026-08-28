@@ -45,13 +45,17 @@ endfunction()
 
 add_library(gview_core
     src/collection.cpp
+    src/composition.cpp
     src/compile.cpp
     src/focus.cpp
     src/io.cpp
     src/paint.cpp
     src/runtime.cpp
     src/runtime_metrics.cpp
+    src/theme.cpp
+    src/theme_io.cpp
     src/types.cpp
+    src/widget.cpp
 )
 add_library(gview::core ALIAS gview_core)
 target_link_libraries(gview_core PUBLIC glayout::graph)
@@ -62,7 +66,7 @@ target_compile_features(gview_core PUBLIC cxx_std_20)
 gview_warnings(gview_core)
 
 if(GVIEW_BUILD_AUTHORING OR GVIEW_BUILD_TESTS OR GVIEW_WITH_IMGUI)
-    add_library(gview_authoring src/authoring.cpp)
+    add_library(gview_authoring src/authoring.cpp src/preview.cpp)
     add_library(gview::authoring ALIAS gview_authoring)
     target_link_libraries(gview_authoring PUBLIC gview::core)
     target_include_directories(gview_authoring PUBLIC
@@ -102,6 +106,7 @@ if(GVIEW_WITH_IMGUI)
         message(FATAL_ERROR "GVIEW_WITH_IMGUI requires an existing Dear ImGui target")
     endif()
     add_library(gview_imgui
+        src/imgui_display.cpp
         src/imgui_editor.cpp
         src/imgui_focus.cpp
         src/imgui_overlay.cpp)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gview/theme.hpp"
 #include "gview/types.hpp"
 
 #include <glayout/graph.hpp>
@@ -20,6 +21,15 @@ struct FocusGroup {
     bool remember = true;
 };
 
+// Connects scopes without persisting one current collection item's identity.
+struct FocusGroupEdge {
+    std::string from;
+    NavAction action = NavAction::Down;
+    std::string to;
+
+    bool operator==(const FocusGroupEdge&) const = default;
+};
+
 struct View {
     std::string id;
     std::string label;
@@ -27,6 +37,9 @@ struct View {
     std::vector<NodeSpec> nodes;
     std::vector<FocusGroup> focus_groups;
     std::vector<FocusEdge> focus_edges;
+    std::vector<FocusGroupEdge> focus_group_edges;
+    std::vector<Theme> themes;
+    std::string active_theme;
 };
 
 struct ViewStore {

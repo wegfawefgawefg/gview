@@ -16,6 +16,12 @@ bool same_group(const CompiledView& view, NodeIndex left, NodeIndex right) {
     return view.nodes[left].source.focus_group == view.nodes[right].source.focus_group;
 }
 
+const CompiledFocusGroup* group_by_id(const CompiledView& view, std::string_view id) {
+    for (const CompiledFocusGroup& group : view.focus_groups)
+        if (group.id == id) return &group;
+    return nullptr;
+}
+
 float direction_score(glayout::Rect source, glayout::Rect target, NavAction action) {
     const float source_x = source.x + source.w * 0.5f;
     const float source_y = source.y + source.h * 0.5f;
@@ -61,7 +67,23 @@ NodeIndex next_focus(const CompiledView& view, const std::vector<glayout::Resolv
     for (const CompiledFocusEdge& edge : view.focus_edges) {
         if (edge.from == current && edge.action == action && available(edge.to)) return edge.to;
     }
+    const std::string& current_group = view.nodes[current].source.focus_group;
+    const auto group_edge_target = [&]() {
+        for (const CompiledFocusGroupEdge& edge : view.focus_group_edges) {
+            if (edge.from != current_group || edge.action != action) continue;
+            const CompiledFocusGroup* target = group_by_id(view, edge.to);
+            if (target && target->entry != invalid_node && available(target->entry))
+                return target->entry;
+        }
+        return invalid_node;
+    };
+    const CompiledFocusGroup* scope = focus_group_for(view, current);
+    const auto permitted = [&](NodeIndex candidate) {
+        return !scope || !scope->contain || same_group(view, current, candidate);
+    };
     if (action == NavAction::TabPrevious || action == NavAction::TabNext) {
+        const NodeIndex linked = group_edge_target();
+        if (linked != invalid_node) return linked;
         const int step = action == NavAction::TabPrevious ? -1 : 1;
         int candidate = static_cast<int>(current);
         for (std::size_t count = 0; count < view.nodes.size(); ++count) {
@@ -69,19 +91,31 @@ NodeIndex next_focus(const CompiledView& view, const std::vector<glayout::Resolv
             if (candidate < 0) candidate = static_cast<int>(view.nodes.size()) - 1;
             if (candidate >= static_cast<int>(view.nodes.size())) candidate = 0;
             const NodeIndex index = static_cast<NodeIndex>(candidate);
-            if (same_group(view, current, index) && view.nodes[index].source.focusable &&
-                available(index))
+            if (permitted(index) && view.nodes[index].source.focusable && available(index))
                 return index;
         }
         return current;
     }
-    if (!directional(action)) return current;
+    if (!directional(action)) {
+        const NodeIndex linked = group_edge_target();
+        return linked == invalid_node ? current : linked;
+    }
 
     const glayout::Rect source = geometry[view.nodes[current].layout_index].border;
     NodeIndex best = current;
     float best_score = std::numeric_limits<float>::max();
+    for (const CompiledFocusGroup& group : view.focus_groups) {
+        if (group.owner != current || group.entry == invalid_node || !available(group.entry))
+            continue;
+        const glayout::Rect target = geometry[view.nodes[group.entry].layout_index].border;
+        const float score = direction_score(source, target, action);
+        if (score < best_score) {
+            best = group.entry;
+            best_score = score;
+        }
+    }
     for (NodeIndex candidate = 0; candidate < view.nodes.size(); ++candidate) {
-        if (candidate == current || !same_group(view, current, candidate) ||
+        if (candidate == current || !permitted(candidate) ||
             !view.nodes[candidate].source.focusable || !available(candidate))
             continue;
         const glayout::Rect target = geometry[view.nodes[candidate].layout_index].border;
@@ -91,7 +125,9 @@ NodeIndex next_focus(const CompiledView& view, const std::vector<glayout::Resolv
             best_score = score;
         }
     }
-    return best;
+    if (best != current) return best;
+    const NodeIndex linked = group_edge_target();
+    return linked == invalid_node ? current : linked;
 }
 
 // Looks up the authored local focus scope for back and memory behavior.

@@ -1,5 +1,7 @@
 #include "gview/io.hpp"
 
+#include "theme_io.hpp"
+
 #include <algorithm>
 #include <fstream>
 #include <gsexp/sexp.hpp>
@@ -99,6 +101,7 @@ void parse_node(gsexp::Node source, NodeSpec& node) {
     node.binding = form.get_string("binding").value_or("");
     node.action = form.get_string("action").value_or("");
     node.focus_group = form.get_string("focus_group").value_or("");
+    node.style_class = form.get_string("style_class").value_or("");
     node.condition = form.get_string("condition").value_or("");
     node.minimum = form.get_float("minimum").value_or(0.0f);
     node.maximum = form.get_float("maximum").value_or(1.0f);
@@ -186,6 +189,18 @@ bool parse_view(gsexp::Node source, const std::unordered_map<std::string, glayou
                                                  edge.get_string("to").value_or("")});
         }
     }
+    const gsexp::Node group_edges = form.find("focus_group_edges");
+    if (group_edges.valid()) {
+        for (gsexp::Node entry : group_edges.children()) {
+            if (!entry.is_list() || !entry.head().is_atom("edge")) continue;
+            const gsexp::FormView edge(entry);
+            view.focus_group_edges.push_back(
+                FocusGroupEdge{edge.get_string("from").value_or(""),
+                               nav_action(scalar(edge, "action").value_or("down")),
+                               edge.get_string("to").value_or("")});
+        }
+    }
+    detail::parse_themes(form.find("themes"), view);
     return true;
 }
 
@@ -221,7 +236,8 @@ void write_node(std::ostringstream& out, const NodeSpec& node) {
         << gsexp::quote_string(node.asset) << ") (binding " << gsexp::quote_string(node.binding)
         << ") (action " << gsexp::quote_string(node.action) << ")\n"
         << "        (focus_group " << gsexp::quote_string(node.focus_group) << ") (condition "
-        << gsexp::quote_string(node.condition) << ")\n"
+        << gsexp::quote_string(node.condition) << ") (style_class "
+        << gsexp::quote_string(node.style_class) << ")\n"
         << "        (minimum " << node.minimum << ") (maximum " << node.maximum << ") (step "
         << node.step << ") (selected " << (node.selected ? "true" : "false")
         << ") (focusable " << (node.focusable ? "true" : "false")
@@ -301,7 +317,15 @@ std::string write_views(const std::vector<View>& views) {
         for (const FocusEdge& edge : view.focus_edges)
             out << "      (edge (from " << gsexp::quote_string(edge.from) << ") (action "
                 << to_string(edge.action) << ") (to " << gsexp::quote_string(edge.to) << "))\n";
-        out << "    )\n  )\n";
+        out << "    )\n";
+        out << "    (focus_group_edges\n";
+        for (const FocusGroupEdge& edge : view.focus_group_edges)
+            out << "      (edge (from " << gsexp::quote_string(edge.from) << ") (action "
+                << to_string(edge.action) << ") (to " << gsexp::quote_string(edge.to)
+                << "))\n";
+        out << "    )\n";
+        detail::write_themes(out, view);
+        out << "  )\n";
     }
     out << ")\n";
     return out.str();

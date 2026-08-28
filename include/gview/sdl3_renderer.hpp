@@ -25,6 +25,8 @@ class Sdl3Renderer {
     void unregister_texture(std::string_view id);
     void register_surface(std::string id, SurfaceRenderer renderer);
     void unregister_surface(std::string_view id);
+    void set_device_pixel_ratio(float scale);
+    void set_nearest_sampling(bool nearest);
     void render(const std::vector<PaintCommand>& commands);
 
   private:
@@ -33,6 +35,8 @@ class Sdl3Renderer {
     std::unique_ptr<FontSystem> fonts_;
     std::unordered_map<std::string, SDL_Texture*> textures_;
     std::unordered_map<std::string, SurfaceRenderer> surfaces_;
+    float device_pixel_ratio_ = 1.0f;
+    bool nearest_sampling_ = false;
 };
 
 } // namespace gview

@@ -17,9 +17,9 @@ scroll-area state contracts. GLayout remains responsible for geometry.
 
 ## Targets
 
-- `gview::core`: view compilation, retained control state, directed/local focus,
-  S-expression persistence, virtual-collection helpers, and renderer-neutral
-  paint commands.
+- `gview::core`: view/theme compilation, retained control state, generated local
+  and group-aware focus, S-expression persistence, compound asset-skinned
+  controls, virtual-collection helpers, and renderer-neutral paint commands.
 - `gview::authoring`: optional editable source sessions, atomic persistence,
   and snapshot undo/redo without any ImGui dependency.
 - `gview::sdl3`: optional SDL3 renderer with cached FreeType/HarfBuzz text,
@@ -113,13 +113,17 @@ becoming a runtime dependency.
 
 `AuthoringSession` edits the same `View` loaded by production code and saves the
 same S-expression format atomically. It supports create, duplicate, delete,
-reparent, undo/redo, reload, and explicit focus-edge replacement. The optional
-ImGui suite adds:
+reparent, cut/copy/paste, undo/redo, reload, explicit node edges, and group
+entry/exit links. The optional ImGui suite surrounds the actual native canvas
+rather than replacing it with a detached schematic:
 
-- Internal resolution, DPI, form-factor, safe-area, view, and fake-data controls.
-- Live hierarchy and geometry overlays with direct node selection/dragging.
+- Explicit Test/Edit modes and clean, layout, focus, and combined overlays.
+- Direct move and eight-handle resize, multi-select, grid/sibling snapping,
+  guides, nudge, constraint-aware reorder, and numeric property editing.
+- Thirty-six display presets with separate logical/physical size, device pixel
+  ratio, UI scale, form factor, safe area, fit/sampling, zoom, and pan.
 - Layout, presentation, control, binding, action, and style property editing.
-- Directed Up/Down/Left/Right/Confirm/Back/bumper edge editing.
+- Safely staged node and group Up/Down/Left/Right/Confirm/Back/bumper links.
 - Reachability diagnostics using the runtime navigation rules.
 - Live frame, node, command, and owned-memory telemetry.
 

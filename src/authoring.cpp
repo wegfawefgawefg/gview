@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace gview {
@@ -11,6 +12,14 @@ void collect_ids(const glayout::GraphNode& node, std::vector<std::string>& ids) 
     ids.push_back(node.id);
     for (const glayout::GraphNode& child : node.children)
         collect_ids(child, ids);
+}
+
+void rename_tree(glayout::GraphNode& node, std::string_view root,
+                 std::unordered_map<std::string, std::string>& renamed) {
+    const std::string original = node.id;
+    node.id = root.empty() ? original : std::string(root) + "/" + original;
+    renamed.emplace(original, node.id);
+    for (glayout::GraphNode& child : node.children) rename_tree(child, root, renamed);
 }
 
 NodeSpec* find_spec(View& view, std::string_view id) {
@@ -79,6 +88,10 @@ bool AuthoringSession::remove(std::string_view id) {
         std::erase_if(view.focus_edges, [&](const FocusEdge& edge) {
             return removed.contains(edge.from) || removed.contains(edge.to);
         });
+        for (FocusGroup& group : view.focus_groups) {
+            if (removed.contains(group.entry)) group.entry.clear();
+            if (removed.contains(group.owner)) group.owner.clear();
+        }
         return true;
     });
     if (changed) selection_ = view_.layout.root.id;
@@ -112,6 +125,55 @@ bool AuthoringSession::reparent(std::string_view id, std::string_view parent) {
     return edit([&](View& view) { return glayout::graph_reparent_node(view.layout, id, parent); });
 }
 
+// Copies one coherent layout/presentation/focus subtree without serializing it.
+std::optional<AuthoringFragment> AuthoringSession::copy(std::string_view id) const {
+    const glayout::GraphNode* source = glayout::find_graph_node(view_.layout, id);
+    if (!source || source == &view_.layout.root) return std::nullopt;
+    AuthoringFragment fragment;
+    fragment.layout = *source;
+    std::vector<std::string> ids;
+    collect_ids(*source, ids);
+    const std::unordered_set<std::string> included(ids.begin(), ids.end());
+    for (const NodeSpec& spec : view_.nodes)
+        if (included.contains(spec.layout_id)) fragment.nodes.push_back(spec);
+    for (const FocusEdge& edge : view_.focus_edges)
+        if (included.contains(edge.from) && included.contains(edge.to))
+            fragment.focus_edges.push_back(edge);
+    return fragment;
+}
+
+// Pastes a copied subtree with collision-free identities and remapped local
+// presentation and navigation references.
+bool AuthoringSession::paste(const AuthoringFragment& source, std::string_view parent,
+                             std::string new_id) {
+    if (new_id.empty() || glayout::find_graph_node(view_.layout, new_id)) return false;
+    const std::string old_root = source.layout.id;
+    const bool changed = edit([&](View& view) {
+        glayout::GraphNode layout = source.layout;
+        std::unordered_map<std::string, std::string> renamed;
+        layout.id = new_id;
+        renamed.emplace(old_root, new_id);
+        for (glayout::GraphNode& child : layout.children) rename_tree(child, new_id, renamed);
+        if (!glayout::graph_add_child(view.layout, parent, std::move(layout))) return false;
+        for (const NodeSpec& original : source.nodes) {
+            const auto id = renamed.find(original.layout_id);
+            if (id == renamed.end()) continue;
+            NodeSpec copy = original;
+            copy.layout_id = id->second;
+            view.nodes.push_back(std::move(copy));
+        }
+        for (const FocusEdge& original : source.focus_edges) {
+            const auto from = renamed.find(original.from);
+            const auto to = renamed.find(original.to);
+            if (from != renamed.end() && to != renamed.end())
+                view.focus_edges.push_back({from->second, original.action, to->second});
+        }
+        return true;
+    });
+    if (changed) selection_ = std::move(new_id);
+    return changed;
+}
+
 // Persists explicit directional intent independently from geometric fallback
 // navigation.
 bool AuthoringSession::connect(std::string from, NavAction action, std::string to) {
@@ -137,6 +199,37 @@ bool AuthoringSession::disconnect(std::string_view from, NavAction action, std::
             return edge.from == from && edge.action == action && edge.to == to;
         });
         return before != view.focus_edges.size();
+    });
+}
+
+bool AuthoringSession::connect_groups(std::string from, NavAction action, std::string to) {
+    return edit([&](View& view) {
+        const auto group_exists = [&](std::string_view id) {
+            return std::any_of(view.focus_groups.begin(), view.focus_groups.end(),
+                               [&](const FocusGroup& group) { return group.id == id; });
+        };
+        if (!group_exists(from) || !group_exists(to) || from == to) return false;
+        const auto existing = std::find_if(
+            view.focus_group_edges.begin(), view.focus_group_edges.end(),
+            [&](const FocusGroupEdge& edge) { return edge.from == from && edge.action == action; });
+        if (existing != view.focus_group_edges.end()) {
+            if (existing->to == to) return false;
+            existing->to = std::move(to);
+            return true;
+        }
+        view.focus_group_edges.push_back({std::move(from), action, std::move(to)});
+        return true;
+    });
+}
+
+bool AuthoringSession::disconnect_groups(std::string_view from, NavAction action,
+                                         std::string_view to) {
+    return edit([&](View& view) {
+        const std::size_t before = view.focus_group_edges.size();
+        std::erase_if(view.focus_group_edges, [&](const FocusGroupEdge& edge) {
+            return edge.from == from && edge.action == action && edge.to == to;
+        });
+        return before != view.focus_group_edges.size();
     });
 }
 

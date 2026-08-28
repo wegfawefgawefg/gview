@@ -1,5 +1,6 @@
 #include "gview/gview.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <unordered_map>
@@ -69,6 +70,15 @@ gview::View sample_view() {
     view.focus_groups = {{"rail", "tab_settings", "", false, true},
                          {"content", "volume", "tab_settings", true, true}};
     view.focus_edges = {{"tab_settings", gview::NavAction::Right, "volume"}};
+    gview::PartPresentation slider_track;
+    slider_track.part = gview::WidgetPart::Track;
+    slider_track.asset = "game:ui/rope-track";
+    slider_track.image_mode = gview::ImageMode::Tile;
+    gview::WidgetSkin slider_skin;
+    slider_skin.control = gview::ControlKind::Slider;
+    slider_skin.parts.push_back(slider_track);
+    view.themes.push_back(gview::Theme{"test-theme", "", {slider_skin}});
+    view.active_theme = "test-theme";
     return view;
 }
 
@@ -127,6 +137,52 @@ void test_focus_and_controls() {
             "back returns to owning group");
 }
 
+// Verifies group containment is an authored choice rather than an ignored flag.
+void test_optional_focus_containment() {
+    gview::CompileResult compiled = gview::compile_view(sample_view());
+    require(compiled.ok, "focus containment view compiles");
+    const auto available = [&](gview::NodeIndex index) {
+        return compiled.view.nodes[index].source.focusable;
+    };
+    const gview::NodeIndex tab = compiled.view.indices.at("tab_settings");
+    const gview::NodeIndex volume = compiled.view.indices.at("volume");
+    glayout::GraphRuntime layout(compiled.view.layout);
+    layout.resolve(resolution());
+    require(gview::next_focus(compiled.view, layout.nodes(), tab, gview::NavAction::Down,
+                              available) == volume,
+            "non-contained group can use global geometry");
+    require(gview::next_focus(compiled.view, layout.nodes(), volume, gview::NavAction::Up,
+                              available) != tab,
+            "contained group keeps geometric movement local");
+}
+
+// Verifies scope links remember a dynamic member instead of persisting its ID.
+void test_group_links_and_memory() {
+    gview::View view = sample_view();
+    view.focus_edges.clear();
+    view.focus_groups[1].entry.clear();
+    view.focus_group_edges = {{"rail", gview::NavAction::Right, "content"},
+                              {"content", gview::NavAction::Left, "rail"}};
+    gview::CompileResult compiled = gview::compile_view(view);
+    require(compiled.ok, "automatic group entry and scope links compile");
+    gview::Runtime runtime(std::move(compiled.view));
+    Model model{{{"volume", 0.5}, {"quality", std::string("low")}, {"mute", false}}, {}};
+    gview::Host host = host_for(model);
+    runtime.frame(resolution(), {}, host);
+    runtime.frame(resolution(), {{}, {gview::NavAction::Right}, {}}, host);
+    require(runtime.view().nodes[runtime.focus()].source.layout_id == "volume",
+            "scope link enters its automatic first member");
+    runtime.frame(resolution(), {{}, {gview::NavAction::Down, gview::NavAction::Down}, {}}, host);
+    require(runtime.view().nodes[runtime.focus()].source.layout_id == "mute",
+            "local movement reaches another materialized member");
+    runtime.frame(resolution(), {{}, {gview::NavAction::Left}, {}}, host);
+    require(runtime.view().nodes[runtime.focus()].source.layout_id == "tab_settings",
+            "scope link exits without a node-specific edge");
+    runtime.frame(resolution(), {{}, {gview::NavAction::Right}, {}}, host);
+    require(runtime.view().nodes[runtime.focus()].source.layout_id == "mute",
+            "returning scope link restores the exact remembered member");
+}
+
 // Verifies non-directional overrides and graph diagnostics use runtime
 // semantics.
 void test_focus_overrides_and_diagnostics() {
@@ -155,6 +211,14 @@ void test_pointer_and_cache() {
     Model model{{{"volume", 0.5}, {"quality", std::string("low")}, {"mute", false}}, {}};
     gview::Host host = host_for(model);
     runtime.frame(resolution(), {}, host);
+    const auto themed_track = std::find_if(runtime.paint().begin(), runtime.paint().end(),
+                                           [](const gview::PaintCommand& command) {
+                                               return command.asset == "game:ui/rope-track" &&
+                                                      command.image_mode ==
+                                                          gview::ImageMode::Tile;
+                                           });
+    require(themed_track != runtime.paint().end(),
+            "compiled widget skin emits renderer-neutral asset part");
     const std::uint64_t builds = runtime.stats().paint_builds;
     runtime.frame(resolution(), {}, host);
     require(runtime.stats().paint_builds == builds, "clean frame reuses paint list");
@@ -169,9 +233,34 @@ void test_pointer_and_cache() {
     require(std::get<bool>(model.values["mute"]), "pointer click toggles bound value");
 }
 
+// Verifies compound controls reserve distinct semantic slots and portal space.
+void test_widget_geometry() {
+    gview::NodeSpec slider = control("volume", gview::ControlKind::Slider, "content");
+    slider.text_style.size = 16.0f;
+    const gview::WidgetGeometry slider_geometry =
+        gview::resolve_widget_geometry(slider, {20.0f, 30.0f, 400.0f, 60.0f}, 0.5);
+    require(slider_geometry.label.y + slider_geometry.label.h <= slider_geometry.track.y,
+            "slider label does not overlap track");
+    require(slider_geometry.thumb.x + slider_geometry.thumb.w * 0.5f == 220.0f,
+            "slider thumb follows value ratio");
+
+    gview::NodeSpec select = control("quality", gview::ControlKind::Select, "content");
+    select.text_style.size = 16.0f;
+    select.options = {{"a", "Alpha", std::string("a")},
+                      {"b", "Beta", std::string("b")},
+                      {"c", "Gamma", std::string("c")}};
+    const gview::PopupGeometry popup = gview::resolve_popup_geometry(
+        select, {900.0f, 680.0f, 300.0f, 40.0f}, {0.0f, 0.0f, 1280.0f, 720.0f}, 1);
+    require(popup.frame.y < 680.0f, "popup flips above an obstructed anchor");
+    require(popup.frame.x + popup.frame.w <= 1280.0f, "popup stays inside viewport");
+    require(popup.options.size() == 3, "popup retains visible options");
+}
+
 // Verifies C++ authoring and persisted authoring compile to equivalent views.
 void test_round_trip() {
-    const std::string text = gview::write_views({sample_view()});
+    gview::View view = sample_view();
+    view.focus_group_edges.push_back({"rail", gview::NavAction::Right, "content"});
+    const std::string text = gview::write_views({view});
     const gview::ParseResult parsed = gview::parse_views(text);
     if (!parsed.ok) {
         for (const glayout::Diagnostic& item : parsed.diagnostics)
@@ -180,6 +269,12 @@ void test_round_trip() {
     require(parsed.ok, "view source round trips");
     require(parsed.views.size() == 1, "one view parses");
     require(parsed.views[0].nodes.size() == 4, "controls survive persistence");
+    require(parsed.views[0].themes.size() == 1 &&
+                parsed.views[0].themes[0].widgets[0].parts[0].asset ==
+                    "game:ui/rope-track",
+            "asset-skinned compound controls survive persistence");
+    require(parsed.views[0].focus_group_edges == view.focus_group_edges,
+            "group-level navigation survives persistence");
     require(gview::compile_view(parsed.views[0]).ok, "parsed view compiles");
 }
 
@@ -193,6 +288,8 @@ void test_authoring_session() {
     require(session.add("root", layout, presentation), "authoring adds synchronized node");
     require(session.connect("volume", gview::NavAction::Right, "extra"),
             "authoring adds explicit focus edge");
+    require(session.connect_groups("rail", gview::NavAction::Right, "content"),
+            "authoring adds a data-independent group edge");
     require(session.connect("volume", gview::NavAction::Right, "quality"),
             "authoring replaces a direction without ambiguity");
     require(session.view().focus_edges.back().to == "quality", "replacement target is retained");
@@ -202,11 +299,34 @@ void test_authoring_session() {
     require(session.redo(), "authoring redo succeeds");
     require(session.duplicate("extra", "extra-copy"), "authoring duplicates presentation tree");
     require(session.remove("extra-copy"), "authoring removes presentation tree");
+    const std::optional<gview::AuthoringFragment> copied = session.copy("extra");
+    require(copied.has_value(), "authoring copies a synchronized fragment");
+    require(session.paste(*copied, "root", "extra-pasted"), "authoring pastes a fragment");
+    require(glayout::find_graph_node(session.view().layout, "extra-pasted") != nullptr,
+            "pasted layout receives a new identity");
     const std::filesystem::path path =
         std::filesystem::temp_directory_path() / "gview-authoring-test.sexp";
     require(session.save_as(path), "authoring saves runtime format");
     require(session.reload(), "authoring reloads runtime format");
     std::filesystem::remove(path);
+}
+
+// Verifies display coverage and invalid theme inheritance fail at compile time.
+void test_authoring_validation() {
+    const std::vector<gview::PreviewPreset>& presets = gview::preview_presets();
+    require(presets.size() == 36,
+            "display simulator retains all legacy device and resolution presets");
+    const auto phone = std::find_if(presets.begin(), presets.end(), [](const auto& preset) {
+        return std::string_view(preset.label).find("1179x2556") != std::string_view::npos;
+    });
+    require(phone != presets.end() && phone->width == 393 && phone->height == 852 &&
+                phone->output_width == 1179 && phone->output_height == 2556 &&
+                phone->device_pixel_ratio == 3.0f,
+            "mobile preset separates logical points, physical pixels, and density");
+    gview::View view = sample_view();
+    view.themes.push_back({"cycle", "trial", {}});
+    view.themes[0].extends = "cycle";
+    require(!gview::compile_view(view).ok, "theme inheritance cycles are diagnosed");
 }
 
 // Verifies large host collections can preserve identities while materializing a
@@ -225,10 +345,14 @@ void test_virtual_collection() {
 
 int main() {
     test_focus_and_controls();
+    test_optional_focus_containment();
+    test_group_links_and_memory();
     test_focus_overrides_and_diagnostics();
     test_pointer_and_cache();
+    test_widget_geometry();
     test_round_trip();
     test_authoring_session();
+    test_authoring_validation();
     test_virtual_collection();
     std::cout << "gview tests passed\n";
     return 0;

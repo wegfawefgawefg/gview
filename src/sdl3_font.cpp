@@ -6,6 +6,7 @@
 #include <hb.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
@@ -119,15 +120,20 @@ FontAtlas::~FontAtlas() {
 bool FontAtlas::ready() const { return impl_->texture && impl_->font; }
 
 // Shapes Unicode with HarfBuzz and packs requested FreeType glyphs on demand.
-TextLayout FontAtlas::layout(const std::string& text, float pixel_size, float maximum_width,
-                             bool wrap) {
+TextLayout FontAtlas::layout(const std::string& text, float pixel_size,
+                             float requested_line_height, float maximum_width, bool wrap) {
     TextLayout result;
     if (!ready() || text.empty()) return result;
     const int size = std::max(1, static_cast<int>(std::lround(pixel_size)));
     FT_Set_Pixel_Sizes(impl_->face, 0, static_cast<FT_UInt>(size));
     hb_ft_font_changed(impl_->font);
-    const float line_height = static_cast<float>(impl_->face->size->metrics.height) / 64.0f;
+    const float metric_height = static_cast<float>(impl_->face->size->metrics.height) / 64.0f;
+    const float line_height = requested_line_height > 0.0f
+                                  ? std::max(requested_line_height, metric_height)
+                                  : metric_height;
     result.ascender = static_cast<float>(impl_->face->size->metrics.ascender) / 64.0f;
+    result.descender = -static_cast<float>(impl_->face->size->metrics.descender) / 64.0f;
+    result.line_height = line_height;
     float x = 0.0f;
     float baseline = result.ascender;
     std::size_t line_start = 0;
@@ -143,12 +149,28 @@ TextLayout FontAtlas::layout(const std::string& text, float pixel_size, float ma
         unsigned count = 0;
         const hb_glyph_info_t* info = hb_buffer_get_glyph_infos(buffer, &count);
         const hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, &count);
+        std::size_t wrapped_line_start = result.glyphs.size();
+        std::size_t word_break = wrapped_line_start;
+        float word_break_x = 0.0f;
+        bool has_word_break = false;
         for (unsigned index = 0; index < count; ++index) {
             const float advance = static_cast<float>(positions[index].x_advance) / 64.0f;
             if (wrap && maximum_width > 0.0f && x > 0.0f && x + advance > maximum_width) {
-                result.width = std::max(result.width, x);
-                x = 0.0f;
+                if (has_word_break && word_break > wrapped_line_start) {
+                    result.width = std::max(result.width, word_break_x);
+                    for (std::size_t glyph = word_break; glyph < result.glyphs.size(); ++glyph) {
+                        result.glyphs[glyph].x -= word_break_x;
+                        result.glyphs[glyph].y += line_height;
+                    }
+                    x -= word_break_x;
+                    wrapped_line_start = word_break;
+                } else {
+                    result.width = std::max(result.width, x);
+                    x = 0.0f;
+                    wrapped_line_start = result.glyphs.size();
+                }
                 baseline += line_height;
+                has_word_break = false;
             }
             const Glyph glyph = impl_->glyph(info[index].codepoint, size);
             result.glyphs.push_back(PositionedGlyph{
@@ -157,6 +179,13 @@ TextLayout FontAtlas::layout(const std::string& text, float pixel_size, float ma
                 baseline - static_cast<float>(positions[index].y_offset) / 64.0f - glyph.bearing_y,
                 glyph.width, glyph.height});
             x += advance;
+            const std::size_t cluster = static_cast<std::size_t>(info[index].cluster);
+            if (cluster < line_end - line_start &&
+                std::isspace(static_cast<unsigned char>(text[line_start + cluster])) != 0) {
+                word_break = result.glyphs.size();
+                word_break_x = x;
+                has_word_break = true;
+            }
         }
         hb_buffer_destroy(buffer);
         result.width = std::max(result.width, x);
@@ -171,5 +200,15 @@ TextLayout FontAtlas::layout(const std::string& text, float pixel_size, float ma
 }
 
 SDL_Texture* FontAtlas::texture() const { return impl_->texture; }
+
+void FontAtlas::clear() {
+    impl_->glyphs.clear();
+    std::fill(impl_->pixels.begin(), impl_->pixels.end(), 0);
+    impl_->cursor_x = 1;
+    impl_->cursor_y = 1;
+    impl_->row_height = 0;
+    impl_->dirty = true;
+    impl_->upload();
+}
 
 } // namespace gview::sdl3_detail

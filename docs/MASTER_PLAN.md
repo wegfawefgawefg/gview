@@ -13,6 +13,16 @@ trials, then prove that the same runtime also suits non-menu game UI.
 This document is the durable contract for the project. Compaction, iteration,
 and implementation discoveries must not silently narrow it.
 
+## Review status
+
+The runtime, authoring, and presentation recovery proof described below is
+implemented and ready for user workflow review. Native-canvas WYSIWYG editing,
+group-aware focus authoring, the recovered 36-preset display simulator,
+compound asset-skinned controls, density-aware typography, and genuine
+Gubsy-hosted runtime validation are present. User acceptance and the later
+multi-game pressure-test remain open. The detailed record and acceptance gate
+live in `docs/AUTHORING_PRESENTATION_PLAN.md`.
+
 ## Implemented production proof
 
 The first proof now exists across the standalone repositories and the shared
@@ -28,9 +38,11 @@ trial. The implemented boundary is:
   well as directional overrides, and audits reachability.
 - The SDL3 adapter uses FreeType/HarfBuzz text, cached glyphs and assets,
   scissoring, true controls, and custom native surface callbacks.
-- The optional ImGui package edits hierarchy, geometry, presentation, controls,
-  simulation state, and the directed focus graph with undo/redo/save/reload and
-  live telemetry. It is absent when its target is disabled.
+- The optional ImGui package provides focused hierarchy/properties, display,
+  and focus inspectors around the authoritative native canvas. Test/Edit modes,
+  direct manipulation, overlays, staged focus linking, undo/redo, save/reload,
+  and clean preview form the production authoring workflow. Tools are absent
+  when their target is disabled.
 - Host-driven large collections use stable item identities and virtual visible
   ranges; GLayout can instantiate nested repeated geometry templates
   transactionally. Dynamic source changes rebuild the compiled view while the
@@ -42,8 +54,8 @@ trial. The implemented boundary is:
   non-menu inventory/custom-world-surface proof, real assets, responsive modes,
   mouse/keyboard/gamepad input, provider scenarios, and a hidden self-test.
 
-The measured dense 1920x1080 scrolling path is about 0.29 ms mean complete CPU
-frame on the development machine, with 0.008 ms mean update and 0.166 ms mean
+The measured dense 1920x1080 scrolling path is about 0.32 ms mean complete CPU
+frame on the development machine, with 0.011 ms mean update and 0.187 ms mean
 renderer recording. This is evidence for the trial workload, not a universal
 hardware guarantee. Full results and timing boundaries live beside the trial.
 

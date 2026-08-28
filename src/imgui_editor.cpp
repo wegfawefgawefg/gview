@@ -112,6 +112,13 @@ void add_node(AuthoringSession& session, ContentKind content, ControlKind contro
 }
 
 void draw_toolbar(AuthoringSession& session, AuthoringUiState& state, AuthoringHooks& hooks) {
+    if (ImGui::RadioButton("Test", state.mode == AuthoringMode::Test))
+        state.mode = AuthoringMode::Test;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Edit canvas", state.mode == AuthoringMode::Edit))
+        state.mode = AuthoringMode::Edit;
+    ImGui::SameLine();
+    ImGui::TextDisabled(state.mode == AuthoringMode::Edit ? "runtime input paused" : "UI is live");
     if (ImGui::Button("Undo") && session.undo() && hooks.rebuild) hooks.rebuild();
     ImGui::SameLine();
     if (ImGui::Button("Redo") && session.redo() && hooks.rebuild) hooks.rebuild();
@@ -121,29 +128,24 @@ void draw_toolbar(AuthoringSession& session, AuthoringUiState& state, AuthoringH
     }
     ImGui::SameLine();
     if (ImGui::Button("Reload") && session.reload() && hooks.rebuild) hooks.rebuild();
-    ImGui::SameLine();
-    ImGui::Checkbox("Overlay", &state.show_overlay);
     ImGui::Text("%s%s", session.source().empty() ? "C++ source" : session.source().c_str(),
                 session.dirty() ? "  * modified" : "");
+
+    constexpr const char* overlays[]{"Clean", "Layout", "Focus", "Combined"};
+    int overlay = static_cast<int>(state.overlay);
+    if (ImGui::Combo("Native overlay", &overlay, overlays, 4))
+        state.overlay = static_cast<OverlayMode>(overlay);
+    ImGui::SameLine();
+    ImGui::Checkbox("IDs", &state.show_ids);
+    ImGui::SameLine();
+    ImGui::Checkbox("Grid", &state.show_grid);
+    ImGui::Checkbox("Display simulator", &state.show_display);
+    ImGui::SameLine();
+    ImGui::Checkbox("Focus inspector", &state.show_focus_graph);
 }
 
 void draw_preview(AuthoringUiState& state, AuthoringHooks& hooks) {
     bool changed = false;
-    changed |= ImGui::InputInt("Internal width", &state.preview.width);
-    changed |= ImGui::InputInt("Internal height", &state.preview.height);
-    changed |= ImGui::DragFloat("DPI scale", &state.preview.dpi_scale, 0.05f, 0.5f, 4.0f);
-    int factor = static_cast<int>(state.preview.form_factor);
-    constexpr const char* factors[]{"Desktop", "Tablet", "Phone"};
-    if (ImGui::Combo("Form factor", &factor, factors, 3)) {
-        state.preview.form_factor = static_cast<glayout::FormFactor>(factor);
-        changed = true;
-    }
-    float safe[4]{state.preview.safe_area.left, state.preview.safe_area.top,
-                  state.preview.safe_area.right, state.preview.safe_area.bottom};
-    if (ImGui::DragFloat4("Safe area L/T/R/B", safe, 1.0f, 0.0f, 200.0f)) {
-        state.preview.safe_area = {safe[0], safe[1], safe[2], safe[3]};
-        changed = true;
-    }
     if (!hooks.states.empty()) {
         const std::vector<const char*> labels = [&] {
             std::vector<const char*> result;
@@ -321,7 +323,7 @@ void draw_authoring_tools(AuthoringSession& session, AuthoringUiState& state, Au
         ImGui::SetNextWindowBgAlpha(0.98f);
         if (ImGui::Begin("GView: Live Authoring", &state.show_control)) {
             draw_toolbar(session, state, hooks);
-            if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGui::CollapsingHeader("View data", ImGuiTreeNodeFlags_DefaultOpen))
                 draw_preview(state, hooks);
             if (hooks.metrics && ImGui::CollapsingHeader("Runtime performance"))
                 ImGui::TextWrapped("%s", hooks.metrics().c_str());
@@ -362,8 +364,14 @@ void draw_authoring_tools(AuthoringSession& session, AuthoringUiState& state, Au
         }
         ImGui::End();
     }
+    draw_display_simulator(state, hooks);
     if (state.show_focus_graph) draw_focus_graph(session, state, hooks, compiled, geometry);
-    if (state.show_overlay) draw_layout_overlay(session, state, hooks, compiled, geometry);
+    if (state.overlay != OverlayMode::Clean || state.mode == AuthoringMode::Edit)
+        draw_layout_overlay(session, state, hooks, compiled, geometry);
+}
+
+bool authoring_captures_runtime(const AuthoringUiState& state) {
+    return state.mode == AuthoringMode::Edit;
 }
 
 } // namespace gview

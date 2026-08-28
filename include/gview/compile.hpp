@@ -20,9 +20,16 @@ struct CompiledFocusGroup {
     bool remember = true;
 };
 
+struct CompiledFocusGroupEdge {
+    std::string from;
+    NavAction action = NavAction::Down;
+    std::string to;
+};
+
 struct CompiledNode {
     NodeSpec source;
     glayout::NodeIndex layout_index = glayout::invalid_node_index;
+    CompiledSkin skin;
 };
 
 struct CompiledView {
@@ -32,6 +39,7 @@ struct CompiledView {
     std::vector<CompiledNode> nodes;
     std::vector<CompiledFocusGroup> focus_groups;
     std::vector<CompiledFocusEdge> focus_edges;
+    std::vector<CompiledFocusGroupEdge> focus_group_edges;
     std::vector<NodeIndex> layout_to_node;
     std::unordered_map<std::string, NodeIndex> indices;
 };
