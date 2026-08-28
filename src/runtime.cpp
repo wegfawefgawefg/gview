@@ -27,12 +27,18 @@ glayout::Rect shifted_rect(const CompiledView& view, const std::vector<NodeState
 }
 
 std::string value_text(const Value& value, std::string fallback) {
-    if (const std::string* text = std::get_if<std::string>(&value)) return *text;
-    if (const bool* boolean = std::get_if<bool>(&value)) return *boolean ? "On" : "Off";
+    std::string resolved;
+    if (const std::string* text = std::get_if<std::string>(&value)) resolved = *text;
+    else if (const bool* boolean = std::get_if<bool>(&value)) resolved = *boolean ? "On" : "Off";
     if (const std::int64_t* integer = std::get_if<std::int64_t>(&value))
-        return std::to_string(*integer);
-    if (const double* number = std::get_if<double>(&value)) return std::to_string(*number);
-    return fallback;
+        resolved = std::to_string(*integer);
+    else if (const double* number = std::get_if<double>(&value)) {
+        resolved = std::to_string(*number);
+        while (resolved.size() > 1 && resolved.back() == '0') resolved.pop_back();
+        if (!resolved.empty() && resolved.back() == '.') resolved.pop_back();
+    }
+    if (resolved.empty()) return fallback;
+    return fallback.empty() ? resolved : fallback + "\n" + resolved;
 }
 
 bool visible(const CompiledNode& node, const glayout::GraphRuntime& layout, const Host& host) {
@@ -64,8 +70,45 @@ void activate(RuntimeStats& stats, const CompiledNode& node, NodeState& state, N
                 if (source.options[option].value == current) state.pending_option = option;
             }
         }
+    } else if (source.control == ControlKind::TextInput) {
+        state.editing = true;
+        state.edit_text.clear();
+        if (host.read) {
+            const Value current = host.read(source.binding);
+            if (const std::string* text = std::get_if<std::string>(&current))
+                state.edit_text = *text;
+        }
     } else {
         emit_action(stats, node, index, host);
+    }
+}
+
+void ensure_focus_visible(const CompiledView& view, const glayout::GraphRuntime& layout,
+                          std::vector<NodeState>& state, NodeIndex focus) {
+    if (focus == invalid_node) return;
+    const CompiledNode& focused = view.nodes[focus];
+    const glayout::Rect target = layout.nodes()[focused.layout_index].border;
+    glayout::NodeIndex parent = view.layout.nodes[focused.layout_index].parent;
+    while (parent != glayout::invalid_node_index) {
+        const NodeIndex presentation = view.layout_to_node[parent];
+        if (presentation != invalid_node &&
+            view.nodes[presentation].source.control == ControlKind::ScrollArea) {
+            const glayout::Rect viewport = layout.nodes()[parent].content;
+            const float maximum = std::max(
+                0.0f, layout.nodes()[parent].content_extent.height - viewport.h);
+            const float displayed_top = target.y - state[presentation].scroll;
+            const float displayed_bottom = displayed_top + target.h;
+            if (displayed_top < viewport.y)
+                state[presentation].scroll =
+                    std::clamp(state[presentation].scroll - (viewport.y - displayed_top), 0.0f,
+                               maximum);
+            else if (displayed_bottom > viewport.y + viewport.h)
+                state[presentation].scroll =
+                    std::clamp(state[presentation].scroll +
+                                   (displayed_bottom - viewport.y - viewport.h),
+                               0.0f, maximum);
+        }
+        parent = view.layout.nodes[parent].parent;
     }
 }
 
@@ -109,7 +152,6 @@ void Runtime::reset(CompiledView view) {
     layout_.reset(view_.layout);
     state_.assign(view_.nodes.size(), {});
     paint_.clear();
-    remembered_focus_.clear();
     focus_ = invalid_node;
     paint_dirty_ = true;
     host_revision_ = 0;
@@ -217,11 +259,36 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
         }
     }
 
+    if (focus_ != invalid_node && state_[focus_].editing &&
+        view_.nodes[focus_].source.control == ControlKind::TextInput && !input.text.empty()) {
+        for (char character : input.text) {
+            if (character == '\b') {
+                if (!state_[focus_].edit_text.empty()) state_[focus_].edit_text.pop_back();
+            } else {
+                state_[focus_].edit_text.push_back(character);
+            }
+        }
+        paint_dirty_ = true;
+    }
+
     for (NavAction action : input.navigation) {
         if (focus_ == invalid_node)
             break;
         CompiledNode& node = view_.nodes[focus_];
         NodeState& state = state_[focus_];
+        if (state.editing && node.source.control == ControlKind::TextInput) {
+            if (action == NavAction::Confirm) {
+                if (host.write && !node.source.binding.empty())
+                    host.write(node.source.binding, state.edit_text);
+                state.editing = false;
+                emit_action(stats_, node, focus_, host);
+            } else if (action == NavAction::Back) {
+                state.editing = false;
+                state.edit_text.clear();
+            }
+            paint_dirty_ = true;
+            continue;
+        }
         if (state.open && node.source.control == ControlKind::Select) {
             if ((action == NavAction::Up || action == NavAction::Down) && !node.source.options.empty()) {
                 const int step = action == NavAction::Up ? -1 : 1;
@@ -245,6 +312,23 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
             continue;
         }
         if (action == NavAction::Confirm) {
+            const auto owned_group = std::find_if(
+                view_.focus_groups.begin(), view_.focus_groups.end(),
+                [&](const CompiledFocusGroup& group) { return group.owner == focus_; });
+            if (owned_group != view_.focus_groups.end()) {
+                NodeIndex destination = owned_group->entry;
+                const auto remembered = remembered_focus_.find(owned_group->id);
+                if (remembered != remembered_focus_.end()) {
+                    const auto found = view_.indices.find(remembered->second);
+                    if (found != view_.indices.end() && available(found->second))
+                        destination = found->second;
+                }
+                if (destination != invalid_node && available(destination)) {
+                    focus_ = destination;
+                    paint_dirty_ = true;
+                    continue;
+                }
+            }
             activate(stats_, node, state, focus_, host);
             paint_dirty_ = true;
             continue;
@@ -252,7 +336,8 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
         if (action == NavAction::Back) {
             const CompiledFocusGroup* group = focus_group_for(view_, focus_);
             if (group && group->owner != invalid_node) {
-                if (group->remember) remembered_focus_[group->id] = focus_;
+                if (group->remember)
+                    remembered_focus_[group->id] = view_.nodes[focus_].source.layout_id;
                 focus_ = group->owner;
             } else if (host.action) {
                 host.action("back", focus_);
@@ -263,7 +348,16 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
         }
         const NodeIndex previous = focus_;
         focus_ = next_focus(view_, layout_.nodes(), focus_, action, available);
+        for (const CompiledFocusGroup& group : view_.focus_groups) {
+            if (group.owner != previous || group.entry != focus_) continue;
+            const auto remembered = remembered_focus_.find(group.id);
+            if (remembered == remembered_focus_.end()) continue;
+            const auto found = view_.indices.find(remembered->second);
+            if (found != view_.indices.end() && available(found->second)) focus_ = found->second;
+            break;
+        }
         if (focus_ != previous) {
+            ensure_focus_visible(view_, layout_, state_, focus_);
             const CompiledNode& focused = view_.nodes[focus_];
             if (focused.source.activation == ActivationPolicy::OnFocus)
                 activate(stats_, focused, state_[focus_], focus_, host);
@@ -283,18 +377,43 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
             const BoxStyle& style = resolve_style(node.source, state_[index], focus_ == index);
             paint_.push_back(PaintCommand{PaintKind::Box, node.source.stratum, index, border,
                                           geometry.clip, style, {}, {}, {}, 0.0});
+            const Value bound = host.read && !node.source.binding.empty()
+                                    ? host.read(node.source.binding) : Value{};
+            if (node.source.control == ControlKind::Slider) {
+                glayout::Rect track = content;
+                track.y = content.y + content.h * 0.65f;
+                track.h = std::max(3.0f, content.h * 0.12f);
+                const double range = node.source.maximum - node.source.minimum;
+                const double ratio = range > 0.0
+                                         ? (numeric_value(bound, node.source.minimum) -
+                                            node.source.minimum) / range
+                                         : 0.0;
+                paint_.push_back(PaintCommand{PaintKind::Progress, node.source.stratum, index,
+                                              track, geometry.clip, style, {}, {}, {}, ratio});
+            } else if (node.source.control == ControlKind::Toggle) {
+                glayout::Rect indicator{content.x + content.w - 34.0f, content.y + 8.0f,
+                                        26.0f, std::max(16.0f, content.h - 16.0f)};
+                BoxStyle toggle_style = style;
+                const bool enabled = std::get_if<bool>(&bound) && std::get<bool>(bound);
+                toggle_style.fill = enabled ? Color{146, 239, 117, 255} : Color{35, 52, 57, 255};
+                paint_.push_back(PaintCommand{PaintKind::Box, node.source.stratum, index,
+                                              indicator, geometry.clip, toggle_style, {}, {}, {}, 0.0});
+            }
             PaintKind kind = PaintKind::Text;
             if (node.source.content == ContentKind::Image) kind = PaintKind::Image;
             else if (node.source.content == ContentKind::Sprite) kind = PaintKind::Sprite;
             else if (node.source.content == ContentKind::Progress) kind = PaintKind::Progress;
             else if (node.source.content == ContentKind::CustomSurface) kind = PaintKind::CustomSurface;
             if (node.source.content != ContentKind::None) {
-                const Value value = host.read && !node.source.binding.empty()
-                                        ? host.read(node.source.binding) : Value{};
+                std::string rendered_text = value_text(bound, node.source.text);
+                if (node.source.control == ControlKind::TextInput && state_[index].editing)
+                    rendered_text = node.source.text.empty()
+                                        ? state_[index].edit_text + "|"
+                                        : node.source.text + "\n" + state_[index].edit_text + "|";
                 paint_.push_back(PaintCommand{kind, node.source.stratum, index, content,
                                               geometry.clip, style, node.source.text_style,
-                                              value_text(value, node.source.text), node.source.asset,
-                                              numeric_value(value)});
+                                              std::move(rendered_text), node.source.asset,
+                                              numeric_value(bound)});
             }
             if (state_[index].open && node.source.control == ControlKind::Select) {
                 for (std::size_t option = 0; option < node.source.options.size(); ++option) {
@@ -329,6 +448,7 @@ bool Runtime::set_focus(std::string_view id) {
     if (found == view_.indices.end() || !view_.nodes[found->second].source.focusable)
         return false;
     focus_ = found->second;
+    if (!layout_.nodes().empty()) ensure_focus_visible(view_, layout_, state_, focus_);
     paint_dirty_ = true;
     return true;
 }

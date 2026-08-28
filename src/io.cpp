@@ -103,6 +103,7 @@ void parse_node(gsexp::Node source, NodeSpec& node) {
     node.minimum = form.get_float("minimum").value_or(0.0f);
     node.maximum = form.get_float("maximum").value_or(1.0f);
     node.step = form.get_float("step").value_or(0.1f);
+    node.selected = boolean(form, "selected", false);
     node.focusable = boolean(form, "focusable", node.control != ControlKind::None);
     node.enabled = boolean(form, "enabled", true);
 
@@ -121,8 +122,11 @@ void parse_node(gsexp::Node source, NodeSpec& node) {
     if (style.valid()) {
         const gsexp::FormView states(style);
         node.style.normal = parse_box(states.find("normal"), node.style.normal);
+        node.style.selected = parse_box(states.find("selected"), node.style.normal);
         node.style.hovered = parse_box(states.find("hovered"), node.style.normal);
         node.style.focused = parse_box(states.find("focused"), node.style.hovered);
+        node.style.selected_focused =
+            parse_box(states.find("selected_focused"), node.style.focused);
         node.style.pressed = parse_box(states.find("pressed"), node.style.focused);
         node.style.disabled = parse_box(states.find("disabled"), node.style.normal);
     }
@@ -219,7 +223,8 @@ void write_node(std::ostringstream& out, const NodeSpec& node) {
         << "        (focus_group " << gsexp::quote_string(node.focus_group) << ") (condition "
         << gsexp::quote_string(node.condition) << ")\n"
         << "        (minimum " << node.minimum << ") (maximum " << node.maximum << ") (step "
-        << node.step << ") (focusable " << (node.focusable ? "true" : "false")
+        << node.step << ") (selected " << (node.selected ? "true" : "false")
+        << ") (focusable " << (node.focusable ? "true" : "false")
         << ") (enabled " << (node.enabled ? "true" : "false") << ")\n"
         << "        (text_style (font " << gsexp::quote_string(node.text_style.font) << ") (size "
         << node.text_style.size << ") (line_height " << node.text_style.line_height
@@ -227,8 +232,10 @@ void write_node(std::ostringstream& out, const NodeSpec& node) {
                                   node.text_style.horizontal == TextAlign::End ? "end" : "start")
         << ") (wrap " << (node.text_style.wrap ? "true" : "false") << "))\n"
         << "        (style\n";
-    write_box(out, "normal", node.style.normal); write_box(out, "hovered", node.style.hovered);
-    write_box(out, "focused", node.style.focused); write_box(out, "pressed", node.style.pressed);
+    write_box(out, "normal", node.style.normal); write_box(out, "selected", node.style.selected);
+    write_box(out, "hovered", node.style.hovered); write_box(out, "focused", node.style.focused);
+    write_box(out, "selected_focused", node.style.selected_focused);
+    write_box(out, "pressed", node.style.pressed);
     write_box(out, "disabled", node.style.disabled); out << "        )\n";
     if (!node.options.empty()) {
         out << "        (options\n";

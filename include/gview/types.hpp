@@ -47,8 +47,10 @@ struct BoxStyle {
 
 struct VisualStates {
     BoxStyle normal;
+    BoxStyle selected;
     BoxStyle hovered;
     BoxStyle focused;
+    BoxStyle selected_focused;
     BoxStyle pressed;
     BoxStyle disabled;
 };
@@ -77,6 +79,7 @@ struct NodeSpec {
     double minimum = 0.0;
     double maximum = 1.0;
     double step = 0.1;
+    bool selected = false;
     bool focusable = false;
     bool enabled = true;
 };

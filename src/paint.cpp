@@ -9,10 +9,14 @@ const BoxStyle& resolve_style(const NodeSpec& node, const NodeState& state, bool
         return node.style.disabled;
     if (state.pressed)
         return node.style.pressed;
+    if (focused && node.selected)
+        return node.style.selected_focused;
     if (focused)
         return node.style.focused;
     if (state.hovered)
         return node.style.hovered;
+    if (node.selected)
+        return node.style.selected;
     return node.style.normal;
 }
 

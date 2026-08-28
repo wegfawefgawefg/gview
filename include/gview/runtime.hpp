@@ -38,6 +38,8 @@ struct NodeState {
     bool open = false;
     float scroll = 0.0f;
     std::size_t pending_option = 0;
+    bool editing = false;
+    std::string edit_text;
 };
 
 struct RuntimeStats {
@@ -68,7 +70,7 @@ class Runtime {
     glayout::GraphRuntime layout_;
     std::vector<NodeState> state_;
     std::vector<PaintCommand> paint_;
-    std::unordered_map<std::string, NodeIndex> remembered_focus_;
+    std::unordered_map<std::string, std::string> remembered_focus_;
     NodeIndex focus_ = invalid_node;
     bool paint_dirty_ = true;
     std::uint64_t host_revision_ = 0;
