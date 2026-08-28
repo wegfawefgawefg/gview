@@ -5,6 +5,7 @@ project(gview VERSION 0.1.0 LANGUAGES CXX)
 option(GVIEW_STRICT "Enable strict compiler warnings" ON)
 option(GVIEW_WARN_AS_ERROR "Treat warnings as errors" OFF)
 option(GVIEW_BUILD_TESTS "Build tests" ON)
+option(GVIEW_BUILD_AUTHORING "Build editable source sessions and snapshot history" OFF)
 option(GVIEW_WITH_IMGUI "Build optional ImGui authoring tools" OFF)
 option(GVIEW_WITH_SDL3_RENDERER "Build the SDL3 renderer and FreeType/HarfBuzz text backend" OFF)
 set(GVIEW_IMGUI_TARGET "" CACHE STRING "Existing Dear ImGui target for authoring tools")
@@ -60,14 +61,16 @@ target_include_directories(gview_core PUBLIC
 target_compile_features(gview_core PUBLIC cxx_std_20)
 gview_warnings(gview_core)
 
-add_library(gview_authoring src/authoring.cpp)
-add_library(gview::authoring ALIAS gview_authoring)
-target_link_libraries(gview_authoring PUBLIC gview::core)
-target_include_directories(gview_authoring PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
-target_compile_features(gview_authoring PUBLIC cxx_std_20)
-gview_warnings(gview_authoring)
+if(GVIEW_BUILD_AUTHORING OR GVIEW_BUILD_TESTS OR GVIEW_WITH_IMGUI)
+    add_library(gview_authoring src/authoring.cpp)
+    add_library(gview::authoring ALIAS gview_authoring)
+    target_link_libraries(gview_authoring PUBLIC gview::core)
+    target_include_directories(gview_authoring PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>)
+    target_compile_features(gview_authoring PUBLIC cxx_std_20)
+    gview_warnings(gview_authoring)
+endif()
 
 if(GVIEW_WITH_SDL3_RENDERER)
     find_package(PkgConfig REQUIRED)

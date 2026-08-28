@@ -29,6 +29,8 @@ scroll-area state contracts. GLayout remains responsible for geometry.
 
 The core never depends on SDL or ImGui. A release build can link only
 `gview::core`, or add its chosen renderer, without retaining authoring state.
+Editable sessions are built when `GVIEW_BUILD_AUTHORING`, tests, or the ImGui
+suite requests them; otherwise that target and implementation are absent.
 
 GView depends on the standalone `glayout::graph` target. GLayout in turn uses
 the standalone `gsexp::gsexp` parser.
