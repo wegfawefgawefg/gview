@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace gview {
 namespace {
@@ -11,6 +12,17 @@ namespace {
 struct CanvasMapping {
     float scale = 1.0f;
     ImVec2 origin;
+};
+
+struct BannerRect {
+    ImVec2 min;
+    ImVec2 max;
+};
+
+struct BannerStack {
+    ImVec2 min;
+    ImVec2 max;
+    std::vector<BannerRect> occupied;
 };
 
 CanvasMapping canvas_mapping(const AuthoringUiState& state, const ImGuiIO& io) {
@@ -92,19 +104,61 @@ bool focus_group_bounds(const CompiledView& compiled,
     return found;
 }
 
-// Keeps authored transitions legible against the fully rendered game UI.
-void draw_link_label(ImDrawList* draw, ImVec2 anchor, ImU32 color, const std::string& label) {
+bool overlaps(BannerRect left, BannerRect right) {
+    constexpr float clearance = 4.0f;
+    return left.min.x < right.max.x + clearance && left.max.x + clearance > right.min.x &&
+           left.min.y < right.max.y + clearance && left.max.y + clearance > right.min.y;
+}
+
+BannerRect banner_rect(ImVec2 center, ImVec2 text_size) {
+    return {{center.x - text_size.x * 0.5f - 5.0f, center.y - text_size.y * 0.5f - 3.0f},
+            {center.x + text_size.x * 0.5f + 5.0f, center.y + text_size.y * 0.5f + 3.0f}};
+}
+
+void reserve_text(BannerStack& stack, ImVec2 position, const std::string& label) {
     const ImVec2 size = ImGui::CalcTextSize(label.c_str());
-    const ImVec2 min{anchor.x - size.x * 0.5f - 5.0f, anchor.y - size.y * 0.5f - 3.0f};
-    const ImVec2 max{anchor.x + size.x * 0.5f + 5.0f, anchor.y + size.y * 0.5f + 3.0f};
-    draw->AddRectFilled(min, max, IM_COL32(4, 15, 18, 238), 2.0f);
-    draw->AddRect(min, max, color, 2.0f);
-    draw->AddText({min.x + 5.0f, min.y + 3.0f}, color, label.c_str());
+    stack.occupied.push_back({position, {position.x + size.x, position.y + size.y}});
+}
+
+// Stacks colliding relationship banners into nearby lanes while retaining a
+// leader to the relationship's truthful midpoint.
+void draw_link_label(ImDrawList* draw, BannerStack& stack, ImVec2 anchor, ImU32 color,
+                     const std::string& label) {
+    const ImVec2 size = ImGui::CalcTextSize(label.c_str());
+    const float half_width = size.x * 0.5f + 5.0f;
+    const float half_height = size.y * 0.5f + 3.0f;
+    const float minimum_x = stack.min.x + half_width + 4.0f;
+    const float maximum_x = stack.max.x - half_width - 4.0f;
+    ImVec2 center{minimum_x <= maximum_x ? std::clamp(anchor.x, minimum_x, maximum_x) : anchor.x,
+                  anchor.y};
+    BannerRect chosen = banner_rect(center, size);
+    constexpr float lane_height = 24.0f;
+    for (int lane = 0; lane < 16; ++lane) {
+        const int distance = (lane + 1) / 2;
+        const float direction = lane == 0 || lane % 2 == 1 ? -1.0f : 1.0f;
+        center.y = std::clamp(anchor.y + direction * static_cast<float>(distance) * lane_height,
+                              stack.min.y + half_height + 4.0f,
+                              stack.max.y - half_height - 4.0f);
+        chosen = banner_rect(center, size);
+        if (std::none_of(stack.occupied.begin(), stack.occupied.end(),
+                         [&](BannerRect item) { return overlaps(chosen, item); }))
+            break;
+    }
+    stack.occupied.push_back(chosen);
+    if (std::fabs(center.x - anchor.x) > 1.0f || std::fabs(center.y - anchor.y) > 1.0f)
+        draw->AddLine(anchor, center, color, 1.0f);
+    draw->AddRectFilled(chosen.min, chosen.max, IM_COL32(4, 15, 18, 238), 2.0f);
+    draw->AddRect(chosen.min, chosen.max, color, 2.0f);
+    draw->AddText({chosen.min.x + 5.0f, chosen.min.y + 3.0f}, color, label.c_str());
 }
 
 void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
                       const std::vector<glayout::ResolvedNode>& geometry,
                       const AuthoringUiState& state, const CanvasMapping& map) {
+    BannerStack banners{map.origin,
+                        mapped(static_cast<float>(state.preview.width),
+                               static_cast<float>(state.preview.height), map),
+                        {}};
     for (const CompiledFocusGroup& group : compiled.focus_groups) {
         glayout::Rect bounds;
         if (!focus_group_bounds(compiled, geometry, group.id, bounds)) continue;
@@ -112,8 +166,9 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         const ImVec2 max = mapped(bounds.x + bounds.w + 4.0f, bounds.y + bounds.h + 4.0f, map);
         draw->AddRect(min, max, IM_COL32(242, 113, 177, 190), 0.0f, 0, 1.5f);
         const std::string label = group.id + (group.remember ? " · remembers last item" : "");
-        draw->AddText({min.x + 3.0f, min.y + 2.0f}, IM_COL32(255, 170, 215, 245),
-                      label.c_str());
+        const ImVec2 position{min.x + 3.0f, min.y + 2.0f};
+        draw->AddText(position, IM_COL32(255, 170, 215, 245), label.c_str());
+        reserve_text(banners, position, label);
     }
     for (const CompiledFocusEdge& edge : compiled.focus_edges) {
         const glayout::Rect from = geometry[compiled.nodes[edge.from].layout_index].border;
@@ -126,7 +181,8 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         const std::string label = compiled.nodes[edge.from].source.layout_id + "  --" +
                                   std::string(to_string(edge.action)) + "-->  " +
                                   compiled.nodes[edge.to].source.layout_id;
-        draw_link_label(draw, {center.x, center.y - 10.0f}, IM_COL32(180, 245, 248, 255), label);
+        draw_link_label(draw, banners, {center.x, center.y - 10.0f},
+                        IM_COL32(180, 245, 248, 255), label);
     }
     for (const CompiledFocusGroupEdge& edge : compiled.focus_group_edges) {
         glayout::Rect from;
@@ -141,7 +197,8 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         const ImVec2 center{(start.x + end.x) * 0.5f, (start.y + end.y) * 0.5f};
         const std::string label = edge.from + "  --" + std::string(to_string(edge.action)) +
                                   "-->  " + edge.to;
-        draw_link_label(draw, {center.x, center.y - 10.0f}, IM_COL32(255, 190, 225, 255), label);
+        draw_link_label(draw, banners, {center.x, center.y - 10.0f},
+                        IM_COL32(255, 190, 225, 255), label);
     }
     if (!state.edge_source.empty()) {
         const auto found = compiled.indices.find(state.edge_source);
@@ -153,7 +210,8 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         }
     }
     const ImVec2 legend = mapped(12.0f, 82.0f, map);
-    draw_link_label(draw, {legend.x + 255.0f, legend.y}, IM_COL32(210, 230, 232, 245),
+    draw_link_label(draw, banners, {legend.x + 255.0f, legend.y},
+                    IM_COL32(210, 230, 232, 245),
                     "cyan: item override   pink: scope transition   inside scope: spatial");
 }
 
