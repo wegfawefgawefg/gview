@@ -279,6 +279,9 @@ void test_widget_geometry() {
             "slider label does not overlap track");
     require(slider_geometry.thumb.x + slider_geometry.thumb.w * 0.5f == 220.0f,
             "slider thumb follows value ratio");
+    require(slider_geometry.thumb.y >= 30.0f &&
+                slider_geometry.thumb.y + slider_geometry.thumb.h <= 90.0f,
+            "slider theme parts remain fully inside the control");
 
     gview::NodeSpec select = control("quality", gview::ControlKind::Select, "content");
     select.text_style.size = 16.0f;

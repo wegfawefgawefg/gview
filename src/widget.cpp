@@ -30,16 +30,20 @@ WidgetGeometry resolve_widget_geometry(const NodeSpec& node, glayout::Rect conte
     const float text_height = std::max(12.0f, node.text_style.size * 1.35f);
     const float gap = std::max(4.0f, node.text_style.size * 0.45f);
     if (node.control == ControlKind::Slider) {
-        const float track_height = std::clamp(node.text_style.size * 0.34f, 4.0f, 9.0f);
-        const float thumb_size = std::clamp(node.text_style.size * 1.05f, 14.0f, 24.0f);
+        const float track_height = std::clamp(node.text_style.size * 0.55f, 6.0f, 10.0f);
         const float header_height = std::min(text_height, content.h * 0.48f);
+        const float thumb_size = std::min(
+            std::clamp(node.text_style.size * 1.05f, 14.0f, 24.0f),
+            std::max(track_height, content.h - header_height - gap));
+        const float used_height = header_height + gap + thumb_size;
+        const float top = content.y + std::max(0.0f, (content.h - used_height) * 0.5f);
+        const float track_center = top + header_height + gap + thumb_size * 0.5f;
         const float value_width = std::min(content.w * 0.32f, node.text_style.size * 8.0f);
-        result.label = {content.x, content.y, std::max(0.0f, content.w - value_width - gap),
+        result.label = {content.x, top, std::max(0.0f, content.w - value_width - gap),
                         header_height};
-        result.value = {content.x + content.w - value_width, content.y, value_width,
+        result.value = {content.x + content.w - value_width, top, value_width,
                         header_height};
-        result.track = {content.x, content.y + content.h - track_height - thumb_size * 0.15f,
-                        content.w, track_height};
+        result.track = {content.x, track_center - track_height * 0.5f, content.w, track_height};
         result.fill = result.track;
         result.fill.w *= clamped_ratio(value_ratio);
         const float thumb_center = result.track.x + result.track.w * clamped_ratio(value_ratio);
