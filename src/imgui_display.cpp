@@ -23,7 +23,6 @@ void apply_preset(AuthoringUiState& state, AuthoringHooks& hooks,
     state.preview.form_factor = preset.form_factor;
     state.preview.safe_area = preset.safe_area;
     if (hooks.apply_preview) hooks.apply_preview(state.preview);
-    if (hooks.resize_output) hooks.resize_output(preset.output_width, preset.output_height);
 }
 
 } // namespace
@@ -75,8 +74,7 @@ void draw_display_simulator(AuthoringUiState& state, AuthoringHooks& hooks) {
     output_changed |= ImGui::InputInt("Output height", &state.preview.output_height);
     state.preview.output_width = std::max(160, state.preview.output_width);
     state.preview.output_height = std::max(144, state.preview.output_height);
-    if (output_changed && hooks.resize_output)
-        hooks.resize_output(state.preview.output_width, state.preview.output_height);
+    if (output_changed && hooks.apply_preview) hooks.apply_preview(state.preview);
 
     bool scale_changed = false;
     scale_changed |= ImGui::DragFloat("Device pixel ratio", &state.preview.device_pixel_ratio,
@@ -122,11 +120,16 @@ void draw_display_simulator(AuthoringUiState& state, AuthoringHooks& hooks) {
         state.preview.pan_y = 0.0f;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Match output to logical") && hooks.resize_output) {
+    if (ImGui::Button("Match output to logical")) {
         state.preview.output_width = state.preview.width;
         state.preview.output_height = state.preview.height;
-        hooks.resize_output(state.preview.output_width, state.preview.output_height);
+        if (hooks.apply_preview) hooks.apply_preview(state.preview);
     }
+    ImGui::SeparatorText("Desktop host window");
+    ImGui::TextWrapped("Device presets are fitted inside the existing window. They never resize "
+                       "the desktop window automatically.");
+    if (ImGui::Button("Resize host to logical viewport") && hooks.resize_host_window)
+        hooks.resize_host_window(state.preview.width, state.preview.height);
     ImGui::End();
 }
 

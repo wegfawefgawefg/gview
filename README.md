@@ -122,7 +122,9 @@ rather than replacing it with a detached schematic:
 - Direct move and eight-handle resize, multi-select, grid/sibling snapping,
   guides, nudge, constraint-aware reorder, and numeric property editing.
 - Thirty-six display presets with separate logical/physical size, device pixel
-  ratio, UI scale, form factor, safe area, fit/sampling, zoom, and pan.
+  ratio, UI scale, form factor, safe area, fit/sampling, zoom, and pan. Presets
+  remain fitted inside the desktop host window; host resizing is an explicit
+  separate tool action.
 - Layout, presentation, control, binding, action, and style property editing.
 - Container-subtree focus scopes: select a list, grid, tab strip, toolbar, or
   detail pane once instead of assigning each materialized item separately.

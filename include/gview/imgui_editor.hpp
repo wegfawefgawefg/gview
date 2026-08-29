@@ -19,7 +19,7 @@ struct AuthoringHooks {
     std::function<void(int)> select_state;
     std::function<void(int)> select_scenario;
     std::function<void(const PreviewConfig&)> apply_preview;
-    std::function<void(int, int)> resize_output;
+    std::function<void(int, int)> resize_host_window;
     std::function<void()> rebuild;
     std::function<std::string()> metrics;
 };
