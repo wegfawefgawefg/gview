@@ -68,14 +68,60 @@ void draw_grid(ImDrawList* draw, const AuthoringUiState& state, const CanvasMapp
         draw->AddLine({map.origin.x, y}, {end.x, y}, IM_COL32(80, 135, 140, 34));
 }
 
+void fit_pair(float& first, float& second, float extent) {
+    const float total = first + second;
+    if (total <= extent || total <= 0.0f) return;
+    const float scale = extent / total;
+    first *= scale;
+    second *= scale;
+}
+
+// Projects the selected asset's rendered slice boundaries over every live use.
+void draw_slice_guides(ImDrawList* draw, const AuthoringUiState& state, const CanvasMapping& map,
+                       const std::vector<PaintCommand>* paint) {
+    if (!state.show_slice_guides || !paint) return;
+    for (const PaintCommand& command : *paint) {
+        if (command.kind != PaintKind::Image || command.image_mode != ImageMode::NineSlice)
+            continue;
+        if (!state.slice_guide_asset.empty() && command.asset != state.slice_guide_asset) continue;
+        const auto margin = [&](float value) {
+            return std::max(0.0f, value >= 0.0f ? value : command.slice) *
+                   std::max(0.0f, command.slice_scale);
+        };
+        float left = margin(command.slice_margins.left);
+        float top = margin(command.slice_margins.top);
+        float right = margin(command.slice_margins.right);
+        float bottom = margin(command.slice_margins.bottom);
+        fit_pair(left, right, command.rect.w);
+        fit_pair(top, bottom, command.rect.h);
+        const ImVec2 min = mapped(command.rect.x, command.rect.y, map);
+        const ImVec2 max =
+            mapped(command.rect.x + command.rect.w, command.rect.y + command.rect.h, map);
+        const ImU32 color = IM_COL32(255, 196, 74, 235);
+        draw->AddRect(min, max, color, 0.0f, 0, 1.5f);
+        draw->AddLine(mapped(command.rect.x + left, command.rect.y, map),
+                      mapped(command.rect.x + left, command.rect.y + command.rect.h, map), color);
+        draw->AddLine(
+            mapped(command.rect.x + command.rect.w - right, command.rect.y, map),
+            mapped(command.rect.x + command.rect.w - right, command.rect.y + command.rect.h, map),
+            color);
+        draw->AddLine(mapped(command.rect.x, command.rect.y + top, map),
+                      mapped(command.rect.x + command.rect.w, command.rect.y + top, map), color);
+        draw->AddLine(
+            mapped(command.rect.x, command.rect.y + command.rect.h - bottom, map),
+            mapped(command.rect.x + command.rect.w, command.rect.y + command.rect.h - bottom, map),
+            color);
+    }
+}
+
 void draw_handles(ImDrawList* draw, glayout::Rect bounds, const CanvasMapping& map) {
     const ImVec2 min = mapped(bounds.x, bounds.y, map);
     const ImVec2 max = mapped(bounds.x + bounds.w, bounds.y + bounds.h, map);
     const ImVec2 middle{(min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f};
     constexpr float half = 4.0f;
-    const ImVec2 points[]{{min.x, min.y},       {middle.x, min.y}, {max.x, min.y},
-                          {min.x, middle.y},                      {max.x, middle.y},
-                          {min.x, max.y},       {middle.x, max.y}, {max.x, max.y}};
+    const ImVec2 points[]{{min.x, min.y},    {middle.x, min.y}, {max.x, min.y},
+                          {min.x, middle.y}, {max.x, middle.y}, {min.x, max.y},
+                          {middle.x, max.y}, {max.x, max.y}};
     for (ImVec2 point : points) {
         draw->AddRectFilled({point.x - half, point.y - half}, {point.x + half, point.y + half},
                             IM_COL32(7, 22, 26, 255));
@@ -91,7 +137,8 @@ bool focus_group_bounds(const CompiledView& compiled,
     for (const CompiledNode& node : compiled.nodes) {
         if (node.source.focus_group != group_id) continue;
         const glayout::Rect rect = geometry[node.layout_index].border;
-        if (!found) bounds = rect;
+        if (!found)
+            bounds = rect;
         else {
             const float left = std::min(bounds.x, rect.x);
             const float top = std::min(bounds.y, rect.y);
@@ -137,8 +184,7 @@ void draw_link_label(ImDrawList* draw, BannerStack& stack, ImVec2 anchor, ImU32 
         const int distance = (lane + 1) / 2;
         const float direction = lane == 0 || lane % 2 == 1 ? -1.0f : 1.0f;
         center.y = std::clamp(anchor.y + direction * static_cast<float>(distance) * lane_height,
-                              stack.min.y + half_height + 4.0f,
-                              stack.max.y - half_height - 4.0f);
+                              stack.min.y + half_height + 4.0f, stack.max.y - half_height - 4.0f);
         chosen = banner_rect(center, size);
         if (std::none_of(stack.occupied.begin(), stack.occupied.end(),
                          [&](BannerRect item) { return overlaps(chosen, item); }))
@@ -181,8 +227,8 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         const std::string label = compiled.nodes[edge.from].source.layout_id + "  --" +
                                   std::string(to_string(edge.action)) + "-->  " +
                                   compiled.nodes[edge.to].source.layout_id;
-        draw_link_label(draw, banners, {center.x, center.y - 10.0f},
-                        IM_COL32(180, 245, 248, 255), label);
+        draw_link_label(draw, banners, {center.x, center.y - 10.0f}, IM_COL32(180, 245, 248, 255),
+                        label);
     }
     for (const CompiledFocusGroupEdge& edge : compiled.focus_group_edges) {
         glayout::Rect from;
@@ -195,10 +241,10 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         draw->AddLine(start, end, IM_COL32(242, 113, 177, 220), 3.0f);
         draw->AddCircleFilled(end, 4.0f, IM_COL32(255, 170, 215, 255));
         const ImVec2 center{(start.x + end.x) * 0.5f, (start.y + end.y) * 0.5f};
-        const std::string label = edge.from + "  --" + std::string(to_string(edge.action)) +
-                                  "-->  " + edge.to;
-        draw_link_label(draw, banners, {center.x, center.y - 10.0f},
-                        IM_COL32(255, 190, 225, 255), label);
+        const std::string label =
+            edge.from + "  --" + std::string(to_string(edge.action)) + "-->  " + edge.to;
+        draw_link_label(draw, banners, {center.x, center.y - 10.0f}, IM_COL32(255, 190, 225, 255),
+                        label);
     }
     if (!state.edge_source.empty()) {
         const auto found = compiled.indices.find(state.edge_source);
@@ -210,8 +256,7 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         }
     }
     const ImVec2 legend = mapped(12.0f, 82.0f, map);
-    draw_link_label(draw, banners, {legend.x + 255.0f, legend.y},
-                    IM_COL32(210, 230, 232, 245),
+    draw_link_label(draw, banners, {legend.x + 255.0f, legend.y}, IM_COL32(210, 230, 232, 245),
                     "cyan: item override   pink: scope transition   inside scope: spatial");
 }
 
@@ -221,35 +266,34 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
 // geometry, snapping, grouping, and focus links are authored in one context.
 void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, AuthoringHooks& hooks,
                          const CompiledView& compiled,
-                         const std::vector<glayout::ResolvedNode>& geometry) {
+                         const std::vector<glayout::ResolvedNode>& geometry,
+                         const std::vector<PaintCommand>* paint) {
     if (compiled.nodes.empty() || geometry.empty()) return;
     const ImGuiIO& io = ImGui::GetIO();
     const CanvasMapping map = canvas_mapping(state, io);
     ImDrawList* draw = ImGui::GetBackgroundDrawList();
     draw_grid(draw, state, map);
+    draw_slice_guides(draw, state, map, paint);
 
     if (state.show_layout_boxes || state.show_ids || state.mode == AuthoringMode::Edit) {
         for (NodeIndex index = 0; index < compiled.nodes.size(); ++index) {
             const glayout::Rect rect = geometry[compiled.nodes[index].layout_index].border;
             const ImVec2 min = mapped(rect.x, rect.y, map);
             const ImVec2 max = mapped(rect.x + rect.w, rect.y + rect.h, map);
-            const bool selected = std::find(state.canvas.selection.begin(),
-                                            state.canvas.selection.end(),
-                                            compiled.nodes[index].source.layout_id) !=
-                                  state.canvas.selection.end();
+            const bool selected =
+                std::find(state.canvas.selection.begin(), state.canvas.selection.end(),
+                          compiled.nodes[index].source.layout_id) != state.canvas.selection.end();
             if (state.show_layout_boxes || selected)
-                draw->AddRect(
-                    min, max,
-                    selected ? IM_COL32(154, 239, 117, 255) : IM_COL32(65, 185, 200, 105),
-                    0.0f, 0, selected ? 2.0f : 1.0f);
+                draw->AddRect(min, max,
+                              selected ? IM_COL32(154, 239, 117, 255) : IM_COL32(65, 185, 200, 105),
+                              0.0f, 0, selected ? 2.0f : 1.0f);
             if (state.show_ids)
                 draw->AddText({min.x + 3.0f, min.y + 2.0f}, IM_COL32(190, 245, 235, 220),
                               compiled.nodes[index].source.layout_id.c_str());
         }
         glayout::Rect bounds;
         if (state.mode == AuthoringMode::Edit &&
-            glayout::graph_canvas_selection_bounds(compiled.layout, geometry, state.canvas,
-                                                   bounds))
+            glayout::graph_canvas_selection_bounds(compiled.layout, geometry, state.canvas, bounds))
             draw_handles(draw, bounds, map);
         for (const glayout::CanvasGuide& guide : state.canvas.guides) {
             if (guide.vertical) {
@@ -276,12 +320,13 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
         state.clipboard = session.copy(session.selection());
     if (!io.WantTextInput && command && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
         state.clipboard = session.copy(session.selection());
-        if (state.clipboard && session.remove(session.selection()) && hooks.rebuild) hooks.rebuild();
+        if (state.clipboard && session.remove(session.selection()) && hooks.rebuild)
+            hooks.rebuild();
         glayout::graph_canvas_clear(state.canvas);
     }
     if (!io.WantTextInput && command && ImGui::IsKeyPressed(ImGuiKey_V, false) && state.clipboard) {
-        const std::string parent = session.selection().empty() ? session.view().layout.root.id
-                                                               : session.selection();
+        const std::string parent =
+            session.selection().empty() ? session.view().layout.root.id : session.selection();
         if (session.paste(*state.clipboard, parent, session.make_id("paste")) && hooks.rebuild)
             hooks.rebuild();
     }
@@ -289,8 +334,8 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
         const bool changed = io.KeyShift ? session.redo() : session.undo();
         if (changed && hooks.rebuild) hooks.rebuild();
     }
-    if (!io.WantTextInput && command && ImGui::IsKeyPressed(ImGuiKey_Y, false) &&
-        session.redo() && hooks.rebuild)
+    if (!io.WantTextInput && command && ImGui::IsKeyPressed(ImGuiKey_Y, false) && session.redo() &&
+        hooks.rebuild)
         hooks.rebuild();
     if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false) &&
         session.remove(session.selection()) && hooks.rebuild)
@@ -299,14 +344,10 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
     float nudge_x = 0.0f;
     float nudge_y = 0.0f;
     const float nudge_step = io.KeyShift ? state.canvas.grid_step : 1.0f;
-    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))
-        nudge_x -= nudge_step;
-    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_RightArrow, true))
-        nudge_x += nudge_step;
-    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_UpArrow, true))
-        nudge_y -= nudge_step;
-    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_DownArrow, true))
-        nudge_y += nudge_step;
+    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true)) nudge_x -= nudge_step;
+    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_RightArrow, true)) nudge_x += nudge_step;
+    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_UpArrow, true)) nudge_y -= nudge_step;
+    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) nudge_y += nudge_step;
     if (nudge_x != 0.0f || nudge_y != 0.0f) {
         const View before = session.view();
         if (glayout::graph_canvas_nudge(session.view().layout, compiled.layout, geometry,
@@ -322,15 +363,17 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
             const NodeIndex hit = hit_focus_node(compiled, geometry, mouse_x, mouse_y);
             if (hit != invalid_node) {
                 const std::string id = compiled.nodes[hit].source.layout_id;
-                if (state.edge_source.empty()) state.edge_source = id;
-                else state.edge_target = id;
+                if (state.edge_source.empty())
+                    state.edge_source = id;
+                else
+                    state.edge_target = id;
                 session.select(id);
             }
         } else {
             state.transaction = session.view();
-            const glayout::CanvasResult result = glayout::graph_canvas_press(
-                session.view().layout, compiled.layout, geometry, state.canvas, mouse_x, mouse_y,
-                io.KeyShift);
+            const glayout::CanvasResult result =
+                glayout::graph_canvas_press(session.view().layout, compiled.layout, geometry,
+                                            state.canvas, mouse_x, mouse_y, io.KeyShift);
             if (!result.transaction_started) state.transaction.reset();
             if (result.selection_changed) session.select(state.canvas.primary);
         }
@@ -338,7 +381,7 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
     if (!state.focus_authoring && state.canvas.dragging &&
         ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         if (glayout::graph_canvas_drag(session.view().layout, compiled.layout, geometry,
-                                      state.canvas, mouse_x, mouse_y)
+                                       state.canvas, mouse_x, mouse_y)
                 .changed &&
             hooks.rebuild)
             hooks.rebuild();

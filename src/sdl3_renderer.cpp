@@ -21,9 +21,7 @@ SDL_Color color(Color source, float opacity = 1.0f) {
 
 SDL_FRect rect(glayout::Rect source) { return SDL_FRect{source.x, source.y, source.w, source.h}; }
 
-float snap_pixel(float value, float density) {
-    return std::round(value * density) / density;
-}
+float snap_pixel(float value, float density) { return std::round(value * density) / density; }
 
 SDL_Rect clip_rect(glayout::Rect source) {
     const int left = static_cast<int>(std::floor(source.x));
@@ -37,25 +35,23 @@ void set_color(SDL_Renderer* renderer, SDL_Color value) {
     SDL_SetRenderDrawColor(renderer, value.r, value.g, value.b, value.a);
 }
 
-void render_contained(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect target,
-                      bool cover) {
+void render_contained(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect target, bool cover) {
     float width = 0.0f;
     float height = 0.0f;
-    if (!SDL_GetTextureSize(texture, &width, &height) || width <= 0.0f || height <= 0.0f)
-        return;
+    if (!SDL_GetTextureSize(texture, &width, &height) || width <= 0.0f || height <= 0.0f) return;
     const float scale = cover ? std::max(target.w / width, target.h / height)
                               : std::min(target.w / width, target.h / height);
     if (!cover) {
         SDL_FRect destination{target.x + (target.w - width * scale) * 0.5f,
-                              target.y + (target.h - height * scale) * 0.5f,
-                              width * scale, height * scale};
+                              target.y + (target.h - height * scale) * 0.5f, width * scale,
+                              height * scale};
         SDL_RenderTexture(renderer, texture, nullptr, &destination);
         return;
     }
     const float source_width = target.w / scale;
     const float source_height = target.h / scale;
-    SDL_FRect source{(width - source_width) * 0.5f, (height - source_height) * 0.5f,
-                     source_width, source_height};
+    SDL_FRect source{(width - source_width) * 0.5f, (height - source_height) * 0.5f, source_width,
+                     source_height};
     SDL_RenderTexture(renderer, texture, &source, &target);
 }
 
@@ -71,8 +67,7 @@ void render_natural(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect targ
 void render_tiled(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect target) {
     float width = 0.0f;
     float height = 0.0f;
-    if (!SDL_GetTextureSize(texture, &width, &height) || width <= 0.0f || height <= 0.0f)
-        return;
+    if (!SDL_GetTextureSize(texture, &width, &height) || width <= 0.0f || height <= 0.0f) return;
     for (float y = target.y; y < target.y + target.h; y += height) {
         for (float x = target.x; x < target.x + target.w; x += width) {
             const float draw_width = std::min(width, target.x + target.w - x);
@@ -84,25 +79,44 @@ void render_tiled(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect target
     }
 }
 
+void fit_pair(float& first, float& second, float extent) {
+    const float total = first + second;
+    if (total <= extent || total <= 0.0f) return;
+    const float scale = extent / total;
+    first *= scale;
+    second *= scale;
+}
+
 void render_nine_slice(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect target,
-                       float requested_slice) {
+                       const PaintCommand& command) {
     if (target.w <= 0.0f || target.h <= 0.0f) return;
     float width = 0.0f;
     float height = 0.0f;
-    if (!SDL_GetTextureSize(texture, &width, &height) || width <= 0.0f || height <= 0.0f)
-        return;
-    const float source_slice = std::clamp(requested_slice, 0.0f, std::min(width, height) * 0.5f);
-    if (source_slice <= 0.0f) {
+    if (!SDL_GetTextureSize(texture, &width, &height) || width <= 0.0f || height <= 0.0f) return;
+    const auto margin = [&](float value) { return value >= 0.0f ? value : command.slice; };
+    float source_left = std::max(0.0f, margin(command.slice_margins.left));
+    float source_top = std::max(0.0f, margin(command.slice_margins.top));
+    float source_right = std::max(0.0f, margin(command.slice_margins.right));
+    float source_bottom = std::max(0.0f, margin(command.slice_margins.bottom));
+    fit_pair(source_left, source_right, width);
+    fit_pair(source_top, source_bottom, height);
+    if (source_left + source_top + source_right + source_bottom <= 0.0f) {
         SDL_RenderTexture(renderer, texture, nullptr, &target);
         return;
     }
-    const float target_slice = std::min(source_slice, std::min(target.w, target.h) * 0.5f);
-    const float source_x[4]{0.0f, source_slice, width - source_slice, width};
-    const float source_y[4]{0.0f, source_slice, height - source_slice, height};
-    const float target_x[4]{target.x, target.x + target_slice,
-                            target.x + target.w - target_slice, target.x + target.w};
-    const float target_y[4]{target.y, target.y + target_slice,
-                            target.y + target.h - target_slice, target.y + target.h};
+    const float scale = std::max(0.0f, command.slice_scale);
+    float target_left = source_left * scale;
+    float target_top = source_top * scale;
+    float target_right = source_right * scale;
+    float target_bottom = source_bottom * scale;
+    fit_pair(target_left, target_right, target.w);
+    fit_pair(target_top, target_bottom, target.h);
+    const float source_x[4]{0.0f, source_left, width - source_right, width};
+    const float source_y[4]{0.0f, source_top, height - source_bottom, height};
+    const float target_x[4]{target.x, target.x + target_left, target.x + target.w - target_right,
+                            target.x + target.w};
+    const float target_y[4]{target.y, target.y + target_top, target.y + target.h - target_bottom,
+                            target.y + target.h};
     for (int row = 0; row < 3; ++row) {
         for (int column = 0; column < 3; ++column) {
             const SDL_FRect source{source_x[column], source_y[row],
@@ -122,17 +136,27 @@ void render_nine_slice(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect t
 void render_image(SDL_Renderer* renderer, SDL_Texture* texture, const PaintCommand& command,
                   SDL_FRect target) {
     SDL_SetTextureColorMod(texture, command.tint.r, command.tint.g, command.tint.b);
-    SDL_SetTextureAlphaMod(texture, static_cast<Uint8>(
-                                    static_cast<float>(command.tint.a) * command.image_opacity));
+    SDL_SetTextureAlphaMod(
+        texture, static_cast<Uint8>(static_cast<float>(command.tint.a) * command.image_opacity));
     switch (command.image_mode) {
-    case ImageMode::Natural: render_natural(renderer, texture, target); break;
-    case ImageMode::Contain: render_contained(renderer, texture, target, false); break;
-    case ImageMode::Cover: render_contained(renderer, texture, target, true); break;
-    case ImageMode::Tile: render_tiled(renderer, texture, target); break;
-    case ImageMode::NineSlice:
-        render_nine_slice(renderer, texture, target, command.slice);
+    case ImageMode::Natural:
+        render_natural(renderer, texture, target);
         break;
-    case ImageMode::Stretch: SDL_RenderTexture(renderer, texture, nullptr, &target); break;
+    case ImageMode::Contain:
+        render_contained(renderer, texture, target, false);
+        break;
+    case ImageMode::Cover:
+        render_contained(renderer, texture, target, true);
+        break;
+    case ImageMode::Tile:
+        render_tiled(renderer, texture, target);
+        break;
+    case ImageMode::NineSlice:
+        render_nine_slice(renderer, texture, target, command);
+        break;
+    case ImageMode::Stretch:
+        SDL_RenderTexture(renderer, texture, nullptr, &target);
+        break;
     }
 }
 
@@ -213,10 +237,10 @@ void Sdl3Renderer::render(const std::vector<PaintCommand>& commands) {
             continue;
         }
         if (command.kind != PaintKind::Text || command.text.empty()) continue;
-        const sdl3_detail::TextLayout layout = fonts_->atlas.layout(
-            command.text, command.text_style.size * device_pixel_ratio_,
-            command.text_style.line_height * device_pixel_ratio_,
-            target.w * device_pixel_ratio_, command.text_style.wrap);
+        const sdl3_detail::TextLayout layout =
+            fonts_->atlas.layout(command.text, command.text_style.size * device_pixel_ratio_,
+                                 command.text_style.line_height * device_pixel_ratio_,
+                                 target.w * device_pixel_ratio_, command.text_style.wrap);
         const float layout_width = layout.width / device_pixel_ratio_;
         const float layout_height = layout.height / device_pixel_ratio_;
         float origin_x = target.x;
@@ -233,13 +257,10 @@ void Sdl3Renderer::render(const std::vector<PaintCommand>& commands) {
         SDL_SetTextureColorMod(fonts_->atlas.texture(), tint.r, tint.g, tint.b);
         SDL_SetTextureAlphaMod(fonts_->atlas.texture(), tint.a);
         for (const sdl3_detail::PositionedGlyph& glyph : layout.glyphs) {
-            const SDL_FRect glyph_target{snap_pixel(
-                                             origin_x + glyph.x / device_pixel_ratio_,
-                                             device_pixel_ratio_),
-                                         snap_pixel(origin_y + glyph.y / device_pixel_ratio_,
-                                                    device_pixel_ratio_),
-                                         glyph.width / device_pixel_ratio_,
-                                         glyph.height / device_pixel_ratio_};
+            const SDL_FRect glyph_target{
+                snap_pixel(origin_x + glyph.x / device_pixel_ratio_, device_pixel_ratio_),
+                snap_pixel(origin_y + glyph.y / device_pixel_ratio_, device_pixel_ratio_),
+                glyph.width / device_pixel_ratio_, glyph.height / device_pixel_ratio_};
             SDL_RenderTexture(renderer_, fonts_->atlas.texture(), &glyph.source, &glyph_target);
         }
     }

@@ -82,7 +82,12 @@ nine-slice image modes. Nine-slice divides one texture into fixed corners,
 stretching edges, and a stretching center; it is suitable for panels, buttons,
 slider tracks, and slider fills. Set `PartPresentation::image_mode` to
 `ImageMode::NineSlice` and `PartPresentation::slice` to the source asset's
-uniform inset. Persisted themes use `(image_mode nine_slice)` and `(slice 16)`.
+uniform inset. Optional `slice_margins` provide asymmetric source cuts, while
+`slice_scale` controls rendered border thickness independently. Persisted
+themes use `(image_mode nine_slice)`, `(slice 16)`, `(slice_scale 1.5)`, and an
+optional `(slice_margins (left ...) (top ...) (right ...) (bottom ...))` form.
+The live Theme & Assets window edits mode, asset, tint, opacity, cuts, and scale
+with optional slice guides drawn over the actual native canvas.
 
 `Runtime::owned_bytes()` reports an estimate of library-owned view, layout,
 control, focus, and paint storage. It deliberately excludes host textures,

@@ -75,6 +75,8 @@ gview::View sample_view() {
     slider_track.asset = "game:ui/rope-track";
     slider_track.image_mode = gview::ImageMode::NineSlice;
     slider_track.slice = 16.0f;
+    slider_track.slice_margins = {12.0f, 8.0f, 10.0f, 6.0f};
+    slider_track.slice_scale = 1.5f;
     gview::WidgetSkin slider_skin;
     slider_skin.control = gview::ControlKind::Slider;
     slider_skin.parts.push_back(slider_track);
@@ -98,13 +100,11 @@ gview::View popup_view() {
 
     gview::NodeSpec first = control("first", gview::ControlKind::Select, "selects");
     first.binding = "first";
-    first.options = {{"a", "Alpha", std::string("a")},
-                     {"b", "Beta", std::string("b")}};
+    first.options = {{"a", "Alpha", std::string("a")}, {"b", "Beta", std::string("b")}};
     view.nodes.push_back(std::move(first));
     gview::NodeSpec second = control("second", gview::ControlKind::Select, "selects");
     second.binding = "second";
-    second.options = {{"x", "Xray", std::string("x")},
-                      {"y", "Yankee", std::string("y")}};
+    second.options = {{"x", "Xray", std::string("x")}, {"y", "Yankee", std::string("y")}};
     view.nodes.push_back(std::move(second));
     view.focus_groups = {{"selects", "first", "", true, true}};
     return view;
@@ -214,8 +214,8 @@ void test_owned_scope_does_not_steal_local_movement() {
     const auto available = [&](gview::NodeIndex index) {
         return compiled.view.nodes[index].source.focusable;
     };
-    require(gview::next_focus(compiled.view, layout.nodes(),
-                              compiled.view.indices.at("tab-first"), gview::NavAction::Right,
+    require(gview::next_focus(compiled.view, layout.nodes(), compiled.view.indices.at("tab-first"),
+                              gview::NavAction::Right,
                               available) == compiled.view.indices.at("tab-second"),
             "local tab movement wins over an owned content entry");
 }
@@ -275,13 +275,12 @@ void test_pointer_and_cache() {
     Model model{{{"volume", 0.5}, {"quality", std::string("low")}, {"mute", false}}, {}};
     gview::Host host = host_for(model);
     runtime.frame(resolution(), {}, host);
-    const auto themed_track = std::find_if(runtime.paint().begin(), runtime.paint().end(),
-                                           [](const gview::PaintCommand& command) {
-                                               return command.asset == "game:ui/rope-track" &&
-                                                      command.image_mode ==
-                                                          gview::ImageMode::NineSlice &&
-                                                      command.slice == 16.0f;
-                                           });
+    const auto themed_track = std::find_if(
+        runtime.paint().begin(), runtime.paint().end(), [](const gview::PaintCommand& command) {
+            return command.asset == "game:ui/rope-track" &&
+                   command.image_mode == gview::ImageMode::NineSlice && command.slice == 16.0f &&
+                   command.slice_scale == 1.5f;
+        });
     require(themed_track != runtime.paint().end(),
             "compiled widget skin emits renderer-neutral asset part");
     const std::uint64_t builds = runtime.stats().paint_builds;
@@ -322,7 +321,8 @@ void test_select_popup_ownership() {
 
     runtime.set_focus("first");
     runtime.frame(resolution(), {{}, {gview::NavAction::Confirm}, {}}, host);
-    const glayout::Rect anchor = runtime.geometry()[runtime.view().nodes[first].layout_index].border;
+    const glayout::Rect anchor =
+        runtime.geometry()[runtime.view().nodes[first].layout_index].border;
     const float x = anchor.x + anchor.w * 0.5f;
     const float y = anchor.y + anchor.h * 0.5f;
     runtime.frame(resolution(), {{x, y, true, true, false, 0.0f}, {}, {}}, host);
@@ -334,10 +334,8 @@ void test_select_popup_ownership() {
         runtime.geometry()[runtime.view().nodes[second].layout_index].border;
     const float second_x = second_anchor.x + second_anchor.w * 0.5f;
     const float second_y = second_anchor.y + second_anchor.h * 0.5f;
-    runtime.frame(resolution(),
-                  {{second_x, second_y, true, true, false, 0.0f}, {}, {}}, host);
-    runtime.frame(resolution(),
-                  {{second_x, second_y, false, false, true, 0.0f}, {}, {}}, host);
+    runtime.frame(resolution(), {{second_x, second_y, true, true, false, 0.0f}, {}, {}}, host);
+    runtime.frame(resolution(), {{second_x, second_y, false, false, true, 0.0f}, {}, {}}, host);
     require(!runtime.state()[first].open && runtime.state()[second].open,
             "pointer activation also replaces the popup owner");
 }
@@ -382,11 +380,12 @@ void test_round_trip() {
     require(parsed.views.size() == 1, "one view parses");
     require(parsed.views[0].nodes.size() == 4, "controls survive persistence");
     require(parsed.views[0].themes.size() == 1 &&
-                parsed.views[0].themes[0].widgets[0].parts[0].asset ==
-                    "game:ui/rope-track" &&
+                parsed.views[0].themes[0].widgets[0].parts[0].asset == "game:ui/rope-track" &&
                 parsed.views[0].themes[0].widgets[0].parts[0].image_mode ==
                     gview::ImageMode::NineSlice &&
-                parsed.views[0].themes[0].widgets[0].parts[0].slice == 16.0f,
+                parsed.views[0].themes[0].widgets[0].parts[0].slice == 16.0f &&
+                parsed.views[0].themes[0].widgets[0].parts[0].slice_margins.left == 12.0f &&
+                parsed.views[0].themes[0].widgets[0].parts[0].slice_scale == 1.5f,
             "nine-slice compound controls survive persistence");
     require(parsed.views[0].focus_group_edges == view.focus_group_edges,
             "group-level navigation survives persistence");

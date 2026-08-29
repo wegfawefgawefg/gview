@@ -28,6 +28,14 @@ enum class PresentationState {
 // Defines how an asset maps into one resolved widget part.
 enum class ImageMode { Natural, Stretch, Contain, Cover, Tile, NineSlice };
 
+// Overrides the uniform source cut when an asset has asymmetric borders.
+struct SliceMargins {
+    float left = -1.0f;
+    float top = -1.0f;
+    float right = -1.0f;
+    float bottom = -1.0f;
+};
+
 // Overrides one state of one semantic widget part.
 struct PartPresentation {
     WidgetPart part = WidgetPart::Frame;
@@ -39,6 +47,8 @@ struct PartPresentation {
     Color tint{255, 255, 255, 255};
     float opacity = 1.0f;
     float slice = 8.0f;
+    SliceMargins slice_margins;
+    float slice_scale = 1.0f;
 };
 
 // Selects reusable, class-specific, or node-specific compound control styling.
@@ -58,8 +68,7 @@ struct Theme {
 };
 
 constexpr std::size_t widget_part_count = static_cast<std::size_t>(WidgetPart::Count);
-constexpr std::size_t presentation_state_count =
-    static_cast<std::size_t>(PresentationState::Count);
+constexpr std::size_t presentation_state_count = static_cast<std::size_t>(PresentationState::Count);
 
 // Stores dense resolved part styles compiled once for one semantic node.
 struct CompiledSkin {
@@ -74,8 +83,8 @@ CompiledSkin compile_skin(const std::vector<Theme>& themes, std::string_view act
                           const NodeSpec& node);
 const PartPresentation* find_part(const CompiledSkin& skin, WidgetPart part,
                                   PresentationState state);
-PresentationState presentation_state(const NodeSpec& node, bool hovered, bool pressed,
-                                     bool open, bool focused, const Value& bound);
+PresentationState presentation_state(const NodeSpec& node, bool hovered, bool pressed, bool open,
+                                     bool focused, const Value& bound);
 
 std::string_view to_string(WidgetPart value);
 std::string_view to_string(PresentationState value);

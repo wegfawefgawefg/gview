@@ -109,7 +109,8 @@ if(GVIEW_WITH_IMGUI)
         src/imgui_display.cpp
         src/imgui_editor.cpp
         src/imgui_focus.cpp
-        src/imgui_overlay.cpp)
+        src/imgui_overlay.cpp
+        src/imgui_theme.cpp)
     add_library(gview::imgui ALIAS gview_imgui)
     target_link_libraries(gview_imgui PUBLIC gview::authoring ${GVIEW_RESOLVED_IMGUI_TARGET})
     target_include_directories(gview_imgui PUBLIC

@@ -141,6 +141,8 @@ void draw_toolbar(AuthoringSession& session, AuthoringUiState& state, AuthoringH
     ImGui::Checkbox("Display simulator", &state.show_display);
     ImGui::SameLine();
     ImGui::Checkbox("Focus inspector", &state.show_focus_graph);
+    ImGui::SameLine();
+    ImGui::Checkbox("Theme / assets", &state.show_theme);
 }
 
 void draw_launcher(AuthoringUiState& state) {
@@ -174,6 +176,8 @@ void draw_launcher(AuthoringUiState& state) {
     ImGui::Checkbox("Hierarchy / properties", &state.show_control);
     ImGui::Checkbox("Display simulator", &state.show_display);
     ImGui::Checkbox("Focus inspector", &state.show_focus_graph);
+    ImGui::Checkbox("Theme / assets", &state.show_theme);
+    ImGui::Checkbox("Nine-slice guides", &state.show_slice_guides);
     ImGui::TextDisabled("F1 hides this launcher; canvas editing stays active.");
     ImGui::End();
 }
@@ -350,7 +354,8 @@ void draw_properties(AuthoringSession& session, AuthoringUiState& state, Authori
 // surfaces.
 void draw_authoring_tools(AuthoringSession& session, AuthoringUiState& state, AuthoringHooks& hooks,
                           const CompiledView& compiled,
-                          const std::vector<glayout::ResolvedNode>& geometry) {
+                          const std::vector<glayout::ResolvedNode>& geometry,
+                          const std::vector<PaintCommand>* paint) {
     draw_launcher(state);
     if (state.show_control) {
         ImGui::SetNextWindowPos({16.0f, 56.0f}, ImGuiCond_FirstUseEver);
@@ -400,10 +405,11 @@ void draw_authoring_tools(AuthoringSession& session, AuthoringUiState& state, Au
         ImGui::End();
     }
     draw_display_simulator(state, hooks);
+    draw_theme_editor(session, state, hooks);
     if (state.show_focus_graph) draw_focus_graph(session, state, hooks, compiled, geometry);
     if (state.show_layout_boxes || state.show_grid || state.show_focus_overlay ||
-        state.mode == AuthoringMode::Edit)
-        draw_layout_overlay(session, state, hooks, compiled, geometry);
+        state.show_slice_guides || state.mode == AuthoringMode::Edit)
+        draw_layout_overlay(session, state, hooks, compiled, geometry, paint);
 }
 
 bool authoring_captures_runtime(const AuthoringUiState& state) {

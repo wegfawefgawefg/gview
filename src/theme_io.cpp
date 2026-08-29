@@ -21,11 +21,10 @@ Color parse_color(gsexp::Node source, Color fallback) {
     if (!source.valid()) return fallback;
     const gsexp::FormView color(source);
     const auto channel = [&](std::string_view key, std::uint8_t value) {
-        return static_cast<std::uint8_t>(
-            std::clamp(color.get_int(key).value_or(value), 0, 255));
+        return static_cast<std::uint8_t>(std::clamp(color.get_int(key).value_or(value), 0, 255));
     };
-    return {channel("r", fallback.r), channel("g", fallback.g),
-            channel("b", fallback.b), channel("a", fallback.a)};
+    return {channel("r", fallback.r), channel("g", fallback.g), channel("b", fallback.b),
+            channel("a", fallback.a)};
 }
 
 BoxStyle parse_box(gsexp::Node source, BoxStyle fallback) {
@@ -94,6 +93,15 @@ PartPresentation parse_part(gsexp::Node source) {
     part.image_mode = image_mode(scalar(form, "image_mode").value_or("stretch"));
     part.opacity = form.get_float("opacity").value_or(1.0f);
     part.slice = form.get_float("slice").value_or(8.0f);
+    const gsexp::Node margins = form.find("slice_margins");
+    if (margins.valid()) {
+        const gsexp::FormView values(margins);
+        part.slice_margins.left = values.get_float("left").value_or(part.slice);
+        part.slice_margins.top = values.get_float("top").value_or(part.slice);
+        part.slice_margins.right = values.get_float("right").value_or(part.slice);
+        part.slice_margins.bottom = values.get_float("bottom").value_or(part.slice);
+    }
+    part.slice_scale = form.get_float("slice_scale").value_or(1.0f);
     part.tint = parse_color(form.find("tint"), part.tint);
     part.override_box = boolean(form, "override_box", form.find("box").valid());
     part.box = parse_box(form.find("box"), part.box);
@@ -113,8 +121,8 @@ void write_box(std::ostringstream& out, const BoxStyle& box) {
     write_color(out, "border", box.border);
     out << ' ';
     write_color(out, "text", box.text);
-    out << " (border_width " << box.border_width << ") (corner_radius "
-        << box.corner_radius << ") (opacity " << box.opacity << "))";
+    out << " (border_width " << box.border_width << ") (corner_radius " << box.corner_radius
+        << ") (opacity " << box.opacity << "))";
 }
 
 } // namespace
@@ -156,17 +164,22 @@ void write_themes(std::ostringstream& out, const View& view) {
         out << "      (theme (id " << gsexp::quote_string(theme.id) << ") (extends "
             << gsexp::quote_string(theme.extends) << ")\n";
         for (const WidgetSkin& widget : theme.widgets) {
-            out << "        (widget (control " << to_string(widget.control)
-                << ") (any_control " << (widget.any_control ? "true" : "false")
-                << ") (class " << gsexp::quote_string(widget.style_class) << ") (node "
+            out << "        (widget (control " << to_string(widget.control) << ") (any_control "
+                << (widget.any_control ? "true" : "false") << ") (class "
+                << gsexp::quote_string(widget.style_class) << ") (node "
                 << gsexp::quote_string(widget.node_id) << ")\n";
             for (const PartPresentation& part : widget.parts) {
                 out << "          (part (id " << to_string(part.part) << ") (state "
-                    << to_string(part.state) << ") (asset "
-                    << gsexp::quote_string(part.asset) << ") (image_mode "
-                    << to_string(part.image_mode) << ") (opacity " << part.opacity
-                    << ") (slice " << part.slice << ") (override_box "
+                    << to_string(part.state) << ") (asset " << gsexp::quote_string(part.asset)
+                    << ") (image_mode " << to_string(part.image_mode) << ") (opacity "
+                    << part.opacity << ") (slice " << part.slice << ") (slice_scale "
+                    << part.slice_scale << ") (override_box "
                     << (part.override_box ? "true" : "false") << ") ";
+                if (part.slice_margins.left >= 0.0f) {
+                    out << "(slice_margins (left " << part.slice_margins.left << ") (top "
+                        << part.slice_margins.top << ") (right " << part.slice_margins.right
+                        << ") (bottom " << part.slice_margins.bottom << ")) ";
+                }
                 write_color(out, "tint", part.tint);
                 if (part.override_box) write_box(out, part.box);
                 out << ")\n";

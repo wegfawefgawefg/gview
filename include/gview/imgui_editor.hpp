@@ -2,6 +2,7 @@
 
 #include "gview/authoring.hpp"
 #include "gview/compile.hpp"
+#include "gview/paint.hpp"
 
 #include <functional>
 #include <optional>
@@ -34,11 +35,13 @@ struct AuthoringUiState {
     bool show_control = false;
     bool show_focus_graph = false;
     bool show_display = false;
+    bool show_theme = false;
     bool focus_authoring = false;
     bool show_layout_boxes = false;
     bool show_focus_overlay = false;
     bool show_ids = false;
     bool show_grid = false;
+    bool show_slice_guides = false;
     bool group_link_authoring = false;
     bool host_follows_logical = false;
     float host_logical_fraction = 1.0f;
@@ -46,6 +49,10 @@ struct AuthoringUiState {
     std::string edge_source;
     std::string edge_target;
     std::string selected_focus_group;
+    std::string slice_guide_asset;
+    int selected_theme = 0;
+    int selected_widget_skin = 0;
+    int selected_widget_part = 0;
     std::optional<AuthoringFragment> clipboard;
     std::optional<View> transaction;
 };
@@ -54,6 +61,7 @@ bool authoring_captures_runtime(const AuthoringUiState& state);
 
 void draw_authoring_tools(AuthoringSession& session, AuthoringUiState& state, AuthoringHooks& hooks,
                           const CompiledView& compiled,
-                          const std::vector<glayout::ResolvedNode>& geometry);
+                          const std::vector<glayout::ResolvedNode>& geometry,
+                          const std::vector<PaintCommand>* paint = nullptr);
 
 } // namespace gview
