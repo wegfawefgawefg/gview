@@ -82,6 +82,33 @@ gview::View sample_view() {
     return view;
 }
 
+gview::View popup_view() {
+    gview::View view;
+    view.id = "popups";
+    view.layout.id = "popup_layout";
+    view.layout.width = 1280;
+    view.layout.height = 720;
+    view.layout.root.id = "root";
+    view.layout.root.container = glayout::ContainerKind::Column;
+    view.layout.root.gap = 8.0f;
+    glayout::GraphNode spacer = box("spacer");
+    spacer.size.height = {glayout::LengthKind::Pixels, 240.0f};
+    view.layout.root.children = {box("first"), std::move(spacer), box("second")};
+
+    gview::NodeSpec first = control("first", gview::ControlKind::Select, "selects");
+    first.binding = "first";
+    first.options = {{"a", "Alpha", std::string("a")},
+                     {"b", "Beta", std::string("b")}};
+    view.nodes.push_back(std::move(first));
+    gview::NodeSpec second = control("second", gview::ControlKind::Select, "selects");
+    second.binding = "second";
+    second.options = {{"x", "Xray", std::string("x")},
+                      {"y", "Yankee", std::string("y")}};
+    view.nodes.push_back(std::move(second));
+    view.focus_groups = {{"selects", "first", "", true, true}};
+    return view;
+}
+
 struct Model {
     std::unordered_map<std::string, gview::Value> values;
     std::vector<std::string> actions;
@@ -269,6 +296,50 @@ void test_pointer_and_cache() {
     require(std::get<bool>(model.values["mute"]), "pointer click toggles bound value");
 }
 
+// Verifies selects share one dismissible popup layer instead of overlapping.
+void test_select_popup_ownership() {
+    gview::Runtime runtime(gview::compile_view(popup_view()).view);
+    Model model{{{"first", std::string("a")}, {"second", std::string("x")}}, {}};
+    gview::Host host = host_for(model);
+    runtime.frame(resolution(), {}, host);
+    const gview::NodeIndex first = runtime.view().indices.at("first");
+    const gview::NodeIndex second = runtime.view().indices.at("second");
+
+    runtime.set_focus("first");
+    runtime.frame(resolution(), {{}, {gview::NavAction::Confirm}, {}}, host);
+    require(runtime.state()[first].open, "first select opens");
+    runtime.set_focus("second");
+    runtime.frame(resolution(), {{}, {gview::NavAction::Confirm}, {}}, host);
+    require(!runtime.state()[first].open && runtime.state()[second].open,
+            "opening a select replaces the previous popup owner");
+
+    gview::InputFrame outside;
+    outside.pointer = {1200.0f, 700.0f, true, true, false, 0.0f};
+    runtime.frame(resolution(), outside, host);
+    require(!runtime.state()[second].open, "clicking outside dismisses the popup");
+
+    runtime.set_focus("first");
+    runtime.frame(resolution(), {{}, {gview::NavAction::Confirm}, {}}, host);
+    const glayout::Rect anchor = runtime.geometry()[runtime.view().nodes[first].layout_index].border;
+    const float x = anchor.x + anchor.w * 0.5f;
+    const float y = anchor.y + anchor.h * 0.5f;
+    runtime.frame(resolution(), {{x, y, true, true, false, 0.0f}, {}, {}}, host);
+    runtime.frame(resolution(), {{x, y, false, false, true, 0.0f}, {}, {}}, host);
+    require(!runtime.state()[first].open, "clicking an open select anchor toggles it closed");
+
+    runtime.frame(resolution(), {{}, {gview::NavAction::Confirm}, {}}, host);
+    const glayout::Rect second_anchor =
+        runtime.geometry()[runtime.view().nodes[second].layout_index].border;
+    const float second_x = second_anchor.x + second_anchor.w * 0.5f;
+    const float second_y = second_anchor.y + second_anchor.h * 0.5f;
+    runtime.frame(resolution(),
+                  {{second_x, second_y, true, true, false, 0.0f}, {}, {}}, host);
+    runtime.frame(resolution(),
+                  {{second_x, second_y, false, false, true, 0.0f}, {}, {}}, host);
+    require(!runtime.state()[first].open && runtime.state()[second].open,
+            "pointer activation also replaces the popup owner");
+}
+
 // Verifies compound controls reserve distinct semantic slots and portal space.
 void test_widget_geometry() {
     gview::NodeSpec slider = control("volume", gview::ControlKind::Slider, "content");
@@ -389,6 +460,7 @@ int main() {
     test_group_links_and_memory();
     test_focus_overrides_and_diagnostics();
     test_pointer_and_cache();
+    test_select_popup_ownership();
     test_widget_geometry();
     test_round_trip();
     test_authoring_session();

@@ -168,6 +168,15 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
         }
         focus_ = target;
     };
+    const auto activate_node = [&](NodeIndex index) {
+        if (view_.nodes[index].source.control == ControlKind::Select) {
+            for (NodeIndex other = 0; other < state_.size(); ++other)
+                if (other != index &&
+                    view_.nodes[other].source.control == ControlKind::Select)
+                    state_[other].open = false;
+        }
+        activate(stats_, view_.nodes[index], state_[index], index, host);
+    };
 
     NodeIndex pointer_target = invalid_node;
     bool pointer_select_option = false;
@@ -213,6 +222,17 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
         }
         paint_dirty_ = true;
     }
+    if (input.pointer.pressed) {
+        for (NodeIndex index = 0; index < state_.size(); ++index) {
+            if (!state_[index].open ||
+                view_.nodes[index].source.control != ControlKind::Select)
+                continue;
+            const bool inside_option = pointer_select_option && pointer_target == index;
+            const bool on_anchor = !pointer_select_option && pointer_target == index;
+            if (!inside_option && !on_anchor) state_[index].open = false;
+        }
+        paint_dirty_ = true;
+    }
     if (input.pointer.pressed && pointer_target != invalid_node) {
         move_focus(pointer_target, false);
         state_[pointer_target].pressed = true;
@@ -241,8 +261,11 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
             if (state_[index].pressed && index == pointer_target) {
                 if (pointer_select_option)
                     commit_select(stats_, view_.nodes[index], state_[index], index, host);
+                else if (view_.nodes[index].source.control == ControlKind::Select &&
+                         state_[index].open)
+                    state_[index].open = false;
                 else
-                    activate(stats_, view_.nodes[index], state_[index], index, host);
+                    activate_node(index);
             }
             state_[index].pressed = false;
         }
@@ -341,7 +364,7 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
                     continue;
                 }
             }
-            activate(stats_, node, state, focus_, host);
+            activate_node(focus_);
             paint_dirty_ = true;
             continue;
         }
@@ -370,7 +393,7 @@ void Runtime::frame(const glayout::ResolveInput& resolution, const InputFrame& i
             ensure_focus_visible(view_, layout_, state_, focus_);
             const CompiledNode& focused = view_.nodes[focus_];
             if (focused.source.activation == ActivationPolicy::OnFocus)
-                activate(stats_, focused, state_[focus_], focus_, host);
+                activate_node(focus_);
             paint_dirty_ = true;
         }
     }

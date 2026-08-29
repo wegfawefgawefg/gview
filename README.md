@@ -131,6 +131,8 @@ rather than replacing it with a detached schematic:
 - Container-subtree focus scopes: select a list, grid, tab strip, toolbar, or
   detail pane once instead of assigning each materialized item separately.
 - Safely staged node and group Up/Down/Left/Right/Confirm/Back/bumper links.
+- Select controls share one popup owner: opening another replaces it, clicking
+  its anchor toggles it, and pressing outside dismisses it.
 - Spatial movement remains local while possible; group links are scope exits,
   and returning to a remembered scope restores its exact last member.
 - Native-canvas links carry source, action, and target labels so generated
