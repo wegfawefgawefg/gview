@@ -9,7 +9,6 @@
 namespace gview {
 
 enum class AuthoringMode { Test, Edit };
-enum class OverlayMode { Clean, Layout, Focus, Combined };
 
 struct AuthoringHooks {
     std::vector<std::string> states;
@@ -29,14 +28,15 @@ struct AuthoringUiState {
     PreviewConfig preview;
     glayout::GraphCanvasState canvas;
     AuthoringMode mode = AuthoringMode::Test;
-    OverlayMode overlay = OverlayMode::Combined;
-    bool show_control = true;
-    bool show_hierarchy = true;
+    bool show_launcher = true;
+    bool show_control = false;
     bool show_focus_graph = false;
     bool show_display = false;
     bool focus_authoring = false;
-    bool show_ids = true;
-    bool show_grid = true;
+    bool show_layout_boxes = false;
+    bool show_focus_overlay = false;
+    bool show_ids = false;
+    bool show_grid = false;
     bool group_link_authoring = false;
     NavAction edge_action = NavAction::Right;
     std::string edge_source;

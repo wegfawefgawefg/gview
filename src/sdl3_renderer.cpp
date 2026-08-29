@@ -21,6 +21,10 @@ SDL_Color color(Color source, float opacity = 1.0f) {
 
 SDL_FRect rect(glayout::Rect source) { return SDL_FRect{source.x, source.y, source.w, source.h}; }
 
+float snap_pixel(float value, float density) {
+    return std::round(value * density) / density;
+}
+
 SDL_Rect clip_rect(glayout::Rect source) {
     const int left = static_cast<int>(std::floor(source.x));
     const int top = static_cast<int>(std::floor(source.y));
@@ -221,8 +225,11 @@ void Sdl3Renderer::render(const std::vector<PaintCommand>& commands) {
         SDL_SetTextureColorMod(fonts_->atlas.texture(), tint.r, tint.g, tint.b);
         SDL_SetTextureAlphaMod(fonts_->atlas.texture(), tint.a);
         for (const sdl3_detail::PositionedGlyph& glyph : layout.glyphs) {
-            const SDL_FRect glyph_target{origin_x + glyph.x / device_pixel_ratio_,
-                                         origin_y + glyph.y / device_pixel_ratio_,
+            const SDL_FRect glyph_target{snap_pixel(
+                                             origin_x + glyph.x / device_pixel_ratio_,
+                                             device_pixel_ratio_),
+                                         snap_pixel(origin_y + glyph.y / device_pixel_ratio_,
+                                                    device_pixel_ratio_),
                                          glyph.width / device_pixel_ratio_,
                                          glyph.height / device_pixel_ratio_};
             SDL_RenderTexture(renderer_, fonts_->atlas.texture(), &glyph.source, &glyph_target);

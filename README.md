@@ -117,7 +117,8 @@ reparent, cut/copy/paste, undo/redo, reload, explicit node edges, and group
 entry/exit links. The optional ImGui suite surrounds the actual native canvas
 rather than replacing it with a detached schematic:
 
-- Explicit Test/Edit modes and clean, layout, focus, and combined overlays.
+- Explicit Test/Edit modes with independently toggleable boxes, IDs, grid, and
+  focus overlays; editing remains active while every ImGui window is hidden.
 - Direct move and eight-handle resize, multi-select, grid/sibling snapping,
   guides, nudge, constraint-aware reorder, and numeric property editing.
 - Thirty-six display presets with separate logical/physical size, device pixel

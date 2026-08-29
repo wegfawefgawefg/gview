@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 
 namespace gview::sdl3_detail {
@@ -62,12 +63,19 @@ struct FontAtlas::Impl {
         const FT_Bitmap& bitmap = face->glyph->bitmap;
         const int width = static_cast<int>(bitmap.width);
         const int height = static_cast<int>(bitmap.rows);
-        if (cursor_x + width + 1 >= atlas_size) {
+        if (width == 0 || height == 0) {
+            const Glyph empty{{}, static_cast<float>(face->glyph->bitmap_left),
+                              static_cast<float>(face->glyph->bitmap_top), 0.0f, 0.0f};
+            glyphs.emplace(key, empty);
+            return empty;
+        }
+        constexpr int guard = 1;
+        if (cursor_x + width + guard + 1 >= atlas_size) {
             cursor_x = 1;
             cursor_y += row_height + 1;
             row_height = 0;
         }
-        if (cursor_y + height + 1 >= atlas_size) return {};
+        if (cursor_y + height + guard + 1 >= atlas_size) return {};
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
                 const std::size_t target = static_cast<std::size_t>(((cursor_y + y) * atlas_size +
@@ -79,13 +87,16 @@ struct FontAtlas::Impl {
                 pixels[target + 3] = bitmap.buffer[source];
             }
         }
-        Glyph result{{static_cast<float>(cursor_x), static_cast<float>(cursor_y),
-                      static_cast<float>(width), static_cast<float>(height)},
-                     static_cast<float>(face->glyph->bitmap_left),
-                     static_cast<float>(face->glyph->bitmap_top), static_cast<float>(width),
-                     static_cast<float>(height)};
-        cursor_x += width + 1;
-        row_height = std::max(row_height, height);
+        Glyph result{{static_cast<float>(cursor_x - guard),
+                      static_cast<float>(cursor_y - guard),
+                      static_cast<float>(width + guard * 2),
+                      static_cast<float>(height + guard * 2)},
+                     static_cast<float>(face->glyph->bitmap_left - guard),
+                     static_cast<float>(face->glyph->bitmap_top + guard),
+                     static_cast<float>(width + guard * 2),
+                     static_cast<float>(height + guard * 2)};
+        cursor_x += width + guard * 2 + 1;
+        row_height = std::max(row_height, height + guard * 2);
         dirty = true;
         glyphs.emplace(key, result);
         return result;
@@ -194,7 +205,29 @@ TextLayout FontAtlas::layout(const std::string& text, float pixel_size,
         baseline += line_height;
         line_start = newline + 1;
     }
-    result.height = baseline - result.ascender + line_height;
+    const float nominal_height = baseline - result.ascender + line_height;
+    float ink_left = std::numeric_limits<float>::max();
+    float ink_top = std::numeric_limits<float>::max();
+    float ink_right = std::numeric_limits<float>::lowest();
+    float ink_bottom = std::numeric_limits<float>::lowest();
+    for (const PositionedGlyph& glyph : result.glyphs) {
+        if (glyph.width <= 0.0f || glyph.height <= 0.0f) continue;
+        ink_left = std::min(ink_left, glyph.x);
+        ink_top = std::min(ink_top, glyph.y);
+        ink_right = std::max(ink_right, glyph.x + glyph.width);
+        ink_bottom = std::max(ink_bottom, glyph.y + glyph.height);
+    }
+    const bool has_ink = ink_left != std::numeric_limits<float>::max();
+    const float shift_x = has_ink ? std::max(0.0f, -ink_left) : 0.0f;
+    const float shift_y = has_ink ? std::max(0.0f, -ink_top) : 0.0f;
+    if (shift_x != 0.0f || shift_y != 0.0f)
+        for (PositionedGlyph& glyph : result.glyphs) {
+            glyph.x += shift_x;
+            glyph.y += shift_y;
+        }
+    result.width = std::max(result.width + shift_x, has_ink ? ink_right + shift_x : 0.0f);
+    result.height = std::max(nominal_height + shift_y,
+                             has_ink ? ink_bottom + shift_y : 0.0f);
     impl_->upload();
     return result;
 }

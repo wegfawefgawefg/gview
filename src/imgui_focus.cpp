@@ -163,7 +163,7 @@ void draw_focus_graph(AuthoringSession& session, AuthoringUiState& state, Author
         state.edge_target.clear();
         if (state.focus_authoring) {
             state.mode = AuthoringMode::Edit;
-            state.overlay = OverlayMode::Combined;
+            state.show_focus_overlay = true;
         }
     }
     ImGui::TextWrapped("Click source and target on the rendered UI, then apply. Runtime input is "

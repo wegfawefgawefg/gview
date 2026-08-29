@@ -131,17 +131,51 @@ void draw_toolbar(AuthoringSession& session, AuthoringUiState& state, AuthoringH
     ImGui::Text("%s%s", session.source().empty() ? "C++ source" : session.source().c_str(),
                 session.dirty() ? "  * modified" : "");
 
-    constexpr const char* overlays[]{"Clean", "Layout", "Focus", "Combined"};
-    int overlay = static_cast<int>(state.overlay);
-    if (ImGui::Combo("Native overlay", &overlay, overlays, 4))
-        state.overlay = static_cast<OverlayMode>(overlay);
+    ImGui::Checkbox("Layout boxes", &state.show_layout_boxes);
     ImGui::SameLine();
     ImGui::Checkbox("IDs", &state.show_ids);
     ImGui::SameLine();
     ImGui::Checkbox("Grid", &state.show_grid);
+    ImGui::SameLine();
+    ImGui::Checkbox("Focus overlay", &state.show_focus_overlay);
     ImGui::Checkbox("Display simulator", &state.show_display);
     ImGui::SameLine();
     ImGui::Checkbox("Focus inspector", &state.show_focus_graph);
+}
+
+void draw_launcher(AuthoringUiState& state) {
+    if (!state.show_launcher) return;
+    ImGui::SetNextWindowPos({12.0f, 34.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.96f);
+    if (!ImGui::Begin("GView Tools  [F1]", &state.show_launcher,
+                      ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::End();
+        return;
+    }
+    if (ImGui::RadioButton("Test [F2]", state.mode == AuthoringMode::Test))
+        state.mode = AuthoringMode::Test;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Edit canvas [F2]", state.mode == AuthoringMode::Edit))
+        state.mode = AuthoringMode::Edit;
+    ImGui::TextDisabled(state.mode == AuthoringMode::Edit ? "runtime input paused"
+                                                          : "game UI receives input");
+    ImGui::SeparatorText("Native canvas");
+    ImGui::Checkbox("Layout boxes [F3]", &state.show_layout_boxes);
+    ImGui::Checkbox("Grid [F4]", &state.show_grid);
+    ImGui::Checkbox("Focus graph [F5]", &state.show_focus_overlay);
+    ImGui::Checkbox("Node IDs", &state.show_ids);
+    if (ImGui::Button("Clean canvas")) {
+        state.show_layout_boxes = false;
+        state.show_grid = false;
+        state.show_focus_overlay = false;
+        state.show_ids = false;
+    }
+    ImGui::SeparatorText("Windows");
+    ImGui::Checkbox("Hierarchy / properties", &state.show_control);
+    ImGui::Checkbox("Display simulator", &state.show_display);
+    ImGui::Checkbox("Focus inspector", &state.show_focus_graph);
+    ImGui::TextDisabled("F1 hides this launcher; canvas editing stays active.");
+    ImGui::End();
 }
 
 void draw_preview(AuthoringUiState& state, AuthoringHooks& hooks) {
@@ -317,11 +351,12 @@ void draw_properties(AuthoringSession& session, AuthoringUiState& state, Authori
 void draw_authoring_tools(AuthoringSession& session, AuthoringUiState& state, AuthoringHooks& hooks,
                           const CompiledView& compiled,
                           const std::vector<glayout::ResolvedNode>& geometry) {
+    draw_launcher(state);
     if (state.show_control) {
         ImGui::SetNextWindowPos({16.0f, 56.0f}, ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize({430.0f, 648.0f}, ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowBgAlpha(0.98f);
-        if (ImGui::Begin("GView: Live Authoring", &state.show_control)) {
+        if (ImGui::Begin("GView: Hierarchy & Properties", &state.show_control)) {
             draw_toolbar(session, state, hooks);
             if (ImGui::CollapsingHeader("View data", ImGuiTreeNodeFlags_DefaultOpen))
                 draw_preview(state, hooks);
@@ -366,7 +401,8 @@ void draw_authoring_tools(AuthoringSession& session, AuthoringUiState& state, Au
     }
     draw_display_simulator(state, hooks);
     if (state.show_focus_graph) draw_focus_graph(session, state, hooks, compiled, geometry);
-    if (state.overlay != OverlayMode::Clean || state.mode == AuthoringMode::Edit)
+    if (state.show_layout_boxes || state.show_grid || state.show_focus_overlay ||
+        state.mode == AuthoringMode::Edit)
         draw_layout_overlay(session, state, hooks, compiled, geometry);
 }
 

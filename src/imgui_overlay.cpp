@@ -45,7 +45,7 @@ NodeIndex hit_focus_node(const CompiledView& view,
 }
 
 void draw_grid(ImDrawList* draw, const AuthoringUiState& state, const CanvasMapping& map) {
-    if (!state.show_grid || !state.canvas.snap_grid || state.canvas.grid_step <= 0.0f) return;
+    if (!state.show_grid || state.canvas.grid_step <= 0.0f) return;
     const float step = state.canvas.grid_step * map.scale;
     if (step < 4.0f) return;
     const ImVec2 end = mapped(static_cast<float>(state.preview.width),
@@ -150,13 +150,9 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
     const ImGuiIO& io = ImGui::GetIO();
     const CanvasMapping map = canvas_mapping(state, io);
     ImDrawList* draw = ImGui::GetBackgroundDrawList();
-    const bool layout_visible = state.overlay == OverlayMode::Layout ||
-                                state.overlay == OverlayMode::Combined;
-    const bool focus_visible = state.overlay == OverlayMode::Focus ||
-                               state.overlay == OverlayMode::Combined;
-    if (layout_visible) draw_grid(draw, state, map);
+    draw_grid(draw, state, map);
 
-    if (layout_visible) {
+    if (state.show_layout_boxes || state.show_ids || state.mode == AuthoringMode::Edit) {
         for (NodeIndex index = 0; index < compiled.nodes.size(); ++index) {
             const glayout::Rect rect = geometry[compiled.nodes[index].layout_index].border;
             const ImVec2 min = mapped(rect.x, rect.y, map);
@@ -165,10 +161,12 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
                                             state.canvas.selection.end(),
                                             compiled.nodes[index].source.layout_id) !=
                                   state.canvas.selection.end();
-            draw->AddRect(min, max,
-                          selected ? IM_COL32(154, 239, 117, 255) : IM_COL32(65, 185, 200, 105),
-                          0.0f, 0, selected ? 2.0f : 1.0f);
-            if (state.show_ids && (selected || state.mode == AuthoringMode::Edit))
+            if (state.show_layout_boxes || selected)
+                draw->AddRect(
+                    min, max,
+                    selected ? IM_COL32(154, 239, 117, 255) : IM_COL32(65, 185, 200, 105),
+                    0.0f, 0, selected ? 2.0f : 1.0f);
+            if (state.show_ids)
                 draw->AddText({min.x + 3.0f, min.y + 2.0f}, IM_COL32(190, 245, 235, 220),
                               compiled.nodes[index].source.layout_id.c_str());
         }
@@ -189,10 +187,10 @@ void draw_layout_overlay(AuthoringSession& session, AuthoringUiState& state, Aut
             }
         }
     }
-    if (focus_visible) draw_focus_edges(draw, compiled, geometry, state, map);
+    if (state.show_focus_overlay) draw_focus_edges(draw, compiled, geometry, state, map);
     if (state.mode != AuthoringMode::Edit) return;
 
-    if (state.canvas.selection.empty() && !session.selection().empty()) {
+    if (state.show_control && state.canvas.selection.empty() && !session.selection().empty()) {
         state.canvas.selection = {session.selection()};
         state.canvas.primary = session.selection();
     }
