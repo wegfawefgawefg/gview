@@ -92,6 +92,16 @@ bool focus_group_bounds(const CompiledView& compiled,
     return found;
 }
 
+// Keeps authored transitions legible against the fully rendered game UI.
+void draw_link_label(ImDrawList* draw, ImVec2 anchor, ImU32 color, const std::string& label) {
+    const ImVec2 size = ImGui::CalcTextSize(label.c_str());
+    const ImVec2 min{anchor.x - size.x * 0.5f - 5.0f, anchor.y - size.y * 0.5f - 3.0f};
+    const ImVec2 max{anchor.x + size.x * 0.5f + 5.0f, anchor.y + size.y * 0.5f + 3.0f};
+    draw->AddRectFilled(min, max, IM_COL32(4, 15, 18, 238), 2.0f);
+    draw->AddRect(min, max, color, 2.0f);
+    draw->AddText({min.x + 5.0f, min.y + 3.0f}, color, label.c_str());
+}
+
 void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
                       const std::vector<glayout::ResolvedNode>& geometry,
                       const AuthoringUiState& state, const CanvasMapping& map) {
@@ -101,7 +111,7 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         const ImVec2 min = mapped(bounds.x - 4.0f, bounds.y - 18.0f, map);
         const ImVec2 max = mapped(bounds.x + bounds.w + 4.0f, bounds.y + bounds.h + 4.0f, map);
         draw->AddRect(min, max, IM_COL32(242, 113, 177, 190), 0.0f, 0, 1.5f);
-        const std::string label = group.id + (group.remember ? "  memory" : "");
+        const std::string label = group.id + (group.remember ? " · remembers last item" : "");
         draw->AddText({min.x + 3.0f, min.y + 2.0f}, IM_COL32(255, 170, 215, 245),
                       label.c_str());
     }
@@ -113,7 +123,10 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         draw->AddLine(start, end, IM_COL32(85, 214, 230, 205), 2.0f);
         draw->AddCircleFilled(end, 3.5f, IM_COL32(150, 240, 245, 255));
         const ImVec2 center{(start.x + end.x) * 0.5f, (start.y + end.y) * 0.5f};
-        draw->AddText(center, IM_COL32(180, 245, 248, 255), to_string(edge.action).data());
+        const std::string label = compiled.nodes[edge.from].source.layout_id + "  --" +
+                                  std::string(to_string(edge.action)) + "-->  " +
+                                  compiled.nodes[edge.to].source.layout_id;
+        draw_link_label(draw, {center.x, center.y - 10.0f}, IM_COL32(180, 245, 248, 255), label);
     }
     for (const CompiledFocusGroupEdge& edge : compiled.focus_group_edges) {
         glayout::Rect from;
@@ -126,7 +139,9 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
         draw->AddLine(start, end, IM_COL32(242, 113, 177, 220), 3.0f);
         draw->AddCircleFilled(end, 4.0f, IM_COL32(255, 170, 215, 255));
         const ImVec2 center{(start.x + end.x) * 0.5f, (start.y + end.y) * 0.5f};
-        draw->AddText(center, IM_COL32(255, 190, 225, 255), to_string(edge.action).data());
+        const std::string label = edge.from + "  --" + std::string(to_string(edge.action)) +
+                                  "-->  " + edge.to;
+        draw_link_label(draw, {center.x, center.y - 10.0f}, IM_COL32(255, 190, 225, 255), label);
     }
     if (!state.edge_source.empty()) {
         const auto found = compiled.indices.find(state.edge_source);
@@ -137,6 +152,9 @@ void draw_focus_edges(ImDrawList* draw, const CompiledView& compiled,
             draw->AddRect(min, max, IM_COL32(255, 200, 80, 255), 0.0f, 0, 3.0f);
         }
     }
+    const ImVec2 legend = mapped(12.0f, 82.0f, map);
+    draw_link_label(draw, {legend.x + 255.0f, legend.y}, IM_COL32(210, 230, 232, 245),
+                    "cyan: item override   pink: scope transition   inside scope: spatial");
 }
 
 } // namespace

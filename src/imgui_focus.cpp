@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <unordered_set>
 
 namespace gview {
 namespace {
@@ -31,6 +32,36 @@ std::string node_group(const AuthoringSession& session, std::string_view node_id
     return found == session.view().nodes.end() ? std::string{} : found->focus_group;
 }
 
+void collect_scope_ids(const glayout::GraphNode& node, std::unordered_set<std::string>& ids) {
+    ids.insert(node.id);
+    for (const glayout::GraphNode& child : node.children) collect_scope_ids(child, ids);
+}
+
+// Assigns a selected layout container and all of its focusable descendants as
+// one navigation scope; selecting a leaf remains the one-item form.
+bool assign_selected_scope(View& view, std::string_view selected, std::string_view group_id,
+                           bool remove) {
+    if (selected.empty()) return false;
+    std::unordered_set<std::string> ids;
+    if (const glayout::GraphNode* root = glayout::find_graph_node(view.layout, selected))
+        collect_scope_ids(*root, ids);
+    else
+        ids.insert(std::string(selected));
+    bool changed = false;
+    for (NodeSpec& node : view.nodes) {
+        if (!node.focusable || !ids.contains(node.layout_id)) continue;
+        if (remove) {
+            if (node.focus_group != group_id) continue;
+            node.focus_group.clear();
+        } else {
+            if (node.focus_group == group_id) continue;
+            node.focus_group = group_id;
+        }
+        changed = true;
+    }
+    return changed;
+}
+
 void group_editor(AuthoringSession& session, AuthoringUiState& state, AuthoringHooks& hooks) {
     if (ImGui::BeginCombo("Focus group", state.selected_focus_group.empty()
                                             ? "None selected"
@@ -44,7 +75,14 @@ void group_editor(AuthoringSession& session, AuthoringUiState& state, AuthoringH
         const std::string id = session.make_id("group");
         const std::string selected = session.selection();
         if (session.edit([&](View& view) {
-                view.focus_groups.push_back({id, selected, selected, false, true});
+                assign_selected_scope(view, selected, id, false);
+                std::string entry;
+                for (const NodeSpec& node : view.nodes)
+                    if (node.focusable && node.focus_group == id) {
+                        entry = node.layout_id;
+                        break;
+                    }
+                view.focus_groups.push_back({id, std::move(entry), {}, true, true});
                 return true;
             })) {
             state.selected_focus_group = id;
@@ -72,6 +110,8 @@ void group_editor(AuthoringSession& session, AuthoringUiState& state, AuthoringH
     }
     ImGui::Text("Owner: %s", group->owner.empty() ? "—" : group->owner.c_str());
     ImGui::Text("Entry: %s", group->entry.empty() ? "—" : group->entry.c_str());
+    ImGui::TextWrapped("Directional movement stays spatial inside this scope. Authored scope "
+                       "links are used only when movement reaches an edge.");
     if (ImGui::Button("Selected → owner")) {
         const std::string id = group->id;
         const std::string selected = session.selection();
@@ -93,24 +133,21 @@ void group_editor(AuthoringSession& session, AuthoringUiState& state, AuthoringH
             }) && hooks.rebuild)
             hooks.rebuild();
     }
-    if (ImGui::Button("Assign selected to group")) {
+    if (ImGui::Button("Assign selected subtree")) {
         const std::string id = group->id;
         const std::string selected = session.selection();
-        if (session.edit([&](View& view) {
-                for (NodeSpec& node : view.nodes)
-                    if (node.layout_id == selected) node.focus_group = id;
-                return true;
-            }) && hooks.rebuild)
+        if (session.edit(
+                [&](View& view) { return assign_selected_scope(view, selected, id, false); }) &&
+            hooks.rebuild)
             hooks.rebuild();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Remove selected from group")) {
+    if (ImGui::Button("Remove selected subtree")) {
+        const std::string id = group->id;
         const std::string selected = session.selection();
-        if (session.edit([&](View& view) {
-                for (NodeSpec& node : view.nodes)
-                    if (node.layout_id == selected) node.focus_group.clear();
-                return true;
-            }) && hooks.rebuild)
+        if (session.edit(
+                [&](View& view) { return assign_selected_scope(view, selected, id, true); }) &&
+            hooks.rebuild)
             hooks.rebuild();
     }
     const bool contain = group->contain;

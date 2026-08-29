@@ -124,7 +124,13 @@ rather than replacing it with a detached schematic:
 - Thirty-six display presets with separate logical/physical size, device pixel
   ratio, UI scale, form factor, safe area, fit/sampling, zoom, and pan.
 - Layout, presentation, control, binding, action, and style property editing.
+- Container-subtree focus scopes: select a list, grid, tab strip, toolbar, or
+  detail pane once instead of assigning each materialized item separately.
 - Safely staged node and group Up/Down/Left/Right/Confirm/Back/bumper links.
+- Spatial movement remains local while possible; group links are scope exits,
+  and returning to a remembered scope restores its exact last member.
+- Native-canvas links carry source, action, and target labels so generated
+  movement, item overrides, and scope transitions are distinguishable.
 - Reachability diagnostics using the runtime navigation rules.
 - Live frame, node, command, and owned-memory telemetry.
 

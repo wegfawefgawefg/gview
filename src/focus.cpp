@@ -104,16 +104,6 @@ NodeIndex next_focus(const CompiledView& view, const std::vector<glayout::Resolv
     const glayout::Rect source = geometry[view.nodes[current].layout_index].border;
     NodeIndex best = current;
     float best_score = std::numeric_limits<float>::max();
-    for (const CompiledFocusGroup& group : view.focus_groups) {
-        if (group.owner != current || group.entry == invalid_node || !available(group.entry))
-            continue;
-        const glayout::Rect target = geometry[view.nodes[group.entry].layout_index].border;
-        const float score = direction_score(source, target, action);
-        if (score < best_score) {
-            best = group.entry;
-            best_score = score;
-        }
-    }
     for (NodeIndex candidate = 0; candidate < view.nodes.size(); ++candidate) {
         if (candidate == current || !permitted(candidate) ||
             !view.nodes[candidate].source.focusable || !available(candidate))

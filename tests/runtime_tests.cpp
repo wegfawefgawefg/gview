@@ -156,6 +156,42 @@ void test_optional_focus_containment() {
             "contained group keeps geometric movement local");
 }
 
+// Verifies a tab's owned content cannot steal movement that remains valid in
+// the tab strip; entering content is an authored group transition.
+void test_owned_scope_does_not_steal_local_movement() {
+    gview::View view;
+    view.id = "scope-priority";
+    view.layout.id = "scope-priority-layout";
+    view.layout.width = 1280;
+    view.layout.height = 720;
+    view.layout.root.id = "root";
+    view.layout.root.container = glayout::ContainerKind::Absolute;
+    glayout::GraphNode first = box("tab-first");
+    first.absolute_rect = {0.05f, 0.05f, 0.2f, 0.1f};
+    glayout::GraphNode second = box("tab-second");
+    second.absolute_rect = {0.65f, 0.05f, 0.2f, 0.1f};
+    glayout::GraphNode detail = box("detail");
+    detail.absolute_rect = {0.28f, 0.05f, 0.2f, 0.1f};
+    view.layout.root.children = {first, second, detail};
+    view.nodes = {control("tab-first", gview::ControlKind::Button, "tabs"),
+                  control("tab-second", gview::ControlKind::Button, "tabs"),
+                  control("detail", gview::ControlKind::Button, "detail")};
+    view.focus_groups = {{"tabs", "tab-first", "", true, true},
+                         {"detail", "detail", "tab-first", true, true}};
+    view.focus_group_edges = {{"tabs", gview::NavAction::Down, "detail"}};
+    gview::CompileResult compiled = gview::compile_view(view);
+    require(compiled.ok, "nested scope priority view compiles");
+    glayout::GraphRuntime layout(compiled.view.layout);
+    layout.resolve(resolution());
+    const auto available = [&](gview::NodeIndex index) {
+        return compiled.view.nodes[index].source.focusable;
+    };
+    require(gview::next_focus(compiled.view, layout.nodes(),
+                              compiled.view.indices.at("tab-first"), gview::NavAction::Right,
+                              available) == compiled.view.indices.at("tab-second"),
+            "local tab movement wins over an owned content entry");
+}
+
 // Verifies scope links remember a dynamic member instead of persisting its ID.
 void test_group_links_and_memory() {
     gview::View view = sample_view();
@@ -346,6 +382,7 @@ void test_virtual_collection() {
 int main() {
     test_focus_and_controls();
     test_optional_focus_containment();
+    test_owned_scope_does_not_steal_local_movement();
     test_group_links_and_memory();
     test_focus_overrides_and_diagnostics();
     test_pointer_and_cache();
