@@ -73,7 +73,8 @@ gview::View sample_view() {
     gview::PartPresentation slider_track;
     slider_track.part = gview::WidgetPart::Track;
     slider_track.asset = "game:ui/rope-track";
-    slider_track.image_mode = gview::ImageMode::Tile;
+    slider_track.image_mode = gview::ImageMode::NineSlice;
+    slider_track.slice = 16.0f;
     gview::WidgetSkin slider_skin;
     slider_skin.control = gview::ControlKind::Slider;
     slider_skin.parts.push_back(slider_track);
@@ -278,7 +279,8 @@ void test_pointer_and_cache() {
                                            [](const gview::PaintCommand& command) {
                                                return command.asset == "game:ui/rope-track" &&
                                                       command.image_mode ==
-                                                          gview::ImageMode::Tile;
+                                                          gview::ImageMode::NineSlice &&
+                                                      command.slice == 16.0f;
                                            });
     require(themed_track != runtime.paint().end(),
             "compiled widget skin emits renderer-neutral asset part");
@@ -381,8 +383,11 @@ void test_round_trip() {
     require(parsed.views[0].nodes.size() == 4, "controls survive persistence");
     require(parsed.views[0].themes.size() == 1 &&
                 parsed.views[0].themes[0].widgets[0].parts[0].asset ==
-                    "game:ui/rope-track",
-            "asset-skinned compound controls survive persistence");
+                    "game:ui/rope-track" &&
+                parsed.views[0].themes[0].widgets[0].parts[0].image_mode ==
+                    gview::ImageMode::NineSlice &&
+                parsed.views[0].themes[0].widgets[0].parts[0].slice == 16.0f,
+            "nine-slice compound controls survive persistence");
     require(parsed.views[0].focus_group_edges == view.focus_group_edges,
             "group-level navigation survives persistence");
     require(gview::compile_view(parsed.views[0]).ok, "parsed view compiles");

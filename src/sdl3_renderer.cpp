@@ -86,11 +86,16 @@ void render_tiled(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect target
 
 void render_nine_slice(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect target,
                        float requested_slice) {
+    if (target.w <= 0.0f || target.h <= 0.0f) return;
     float width = 0.0f;
     float height = 0.0f;
     if (!SDL_GetTextureSize(texture, &width, &height) || width <= 0.0f || height <= 0.0f)
         return;
     const float source_slice = std::clamp(requested_slice, 0.0f, std::min(width, height) * 0.5f);
+    if (source_slice <= 0.0f) {
+        SDL_RenderTexture(renderer, texture, nullptr, &target);
+        return;
+    }
     const float target_slice = std::min(source_slice, std::min(target.w, target.h) * 0.5f);
     const float source_x[4]{0.0f, source_slice, width - source_slice, width};
     const float source_y[4]{0.0f, source_slice, height - source_slice, height};
@@ -106,6 +111,9 @@ void render_nine_slice(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FRect t
             const SDL_FRect destination{target_x[column], target_y[row],
                                         target_x[column + 1] - target_x[column],
                                         target_y[row + 1] - target_y[row]};
+            if (source.w <= 0.0f || source.h <= 0.0f || destination.w <= 0.0f ||
+                destination.h <= 0.0f)
+                continue;
             SDL_RenderTexture(renderer, texture, &source, &destination);
         }
     }

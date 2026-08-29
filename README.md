@@ -77,6 +77,13 @@ Stable frames reuse both resolved GLayout geometry and the GView paint list.
 The host increments `Host::revision` or calls `invalidate_paint()` when an
 external value changes without passing through a GView control.
 
+Asset-backed widget parts support natural, stretch, contain, cover, tile, and
+nine-slice image modes. Nine-slice divides one texture into fixed corners,
+stretching edges, and a stretching center; it is suitable for panels, buttons,
+slider tracks, and slider fills. Set `PartPresentation::image_mode` to
+`ImageMode::NineSlice` and `PartPresentation::slice` to the source asset's
+uniform inset. Persisted themes use `(image_mode nine_slice)` and `(slice 16)`.
+
 `Runtime::owned_bytes()` reports an estimate of library-owned view, layout,
 control, focus, and paint storage. It deliberately excludes host textures,
 font atlases, renderer drivers, and swapchains; whole-process RSS answers a
