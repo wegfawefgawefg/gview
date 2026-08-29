@@ -261,6 +261,10 @@ scale are separate concepts and must not be collapsed into one DPI slider.
 
 Switching presets must update the native preview, active responsive variant,
 safe area, text rasterization, clips, overlays, and diagnostics immediately.
+The simulated canvas and authoring tools use separate presentation spaces.
+Game input and paint map through the logical viewport; ImGui always uses host
+window coordinates. Host sizing is independent by default and may explicitly
+follow a configurable fraction of logical size or only match its aspect ratio.
 
 ## Semantic controls and presentation recipes
 

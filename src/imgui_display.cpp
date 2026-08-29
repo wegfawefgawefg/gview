@@ -13,6 +13,33 @@ const char* factor_name(glayout::FormFactor value) {
     return "Desktop";
 }
 
+// Sizes the desktop shell from the simulated logical viewport when requested.
+void resize_host_from_logical(AuthoringUiState& state, AuthoringHooks& hooks) {
+    if (!hooks.resize_host_window) return;
+    const float fraction = std::clamp(state.host_logical_fraction, 0.1f, 4.0f);
+    const int width = static_cast<int>(static_cast<float>(state.preview.width) * fraction + 0.5f);
+    const int height = static_cast<int>(static_cast<float>(state.preview.height) * fraction + 0.5f);
+    hooks.resize_host_window(std::max(1, width), std::max(1, height));
+}
+
+void follow_logical_viewport(AuthoringUiState& state, AuthoringHooks& hooks) {
+    if (state.host_follows_logical) resize_host_from_logical(state, hooks);
+}
+
+// Preserves the current host's largest fitting rectangle at the logical aspect.
+void match_host_aspect(AuthoringUiState& state, AuthoringHooks& hooks) {
+    if (!hooks.host_window_size || !hooks.resize_host_window) return;
+    auto [width, height] = hooks.host_window_size();
+    if (width <= 0 || height <= 0) return;
+    const float aspect = static_cast<float>(state.preview.width) /
+                         static_cast<float>(std::max(1, state.preview.height));
+    if (static_cast<float>(width) / static_cast<float>(height) > aspect)
+        width = std::max(1, static_cast<int>(static_cast<float>(height) * aspect + 0.5f));
+    else
+        height = std::max(1, static_cast<int>(static_cast<float>(width) / aspect + 0.5f));
+    hooks.resize_host_window(width, height);
+}
+
 void apply_preset(AuthoringUiState& state, AuthoringHooks& hooks,
                   const PreviewPreset& preset) {
     state.preview.width = preset.width;
@@ -23,6 +50,7 @@ void apply_preset(AuthoringUiState& state, AuthoringHooks& hooks,
     state.preview.form_factor = preset.form_factor;
     state.preview.safe_area = preset.safe_area;
     if (hooks.apply_preview) hooks.apply_preview(state.preview);
+    follow_logical_viewport(state, hooks);
 }
 
 } // namespace
@@ -67,7 +95,10 @@ void draw_display_simulator(AuthoringUiState& state, AuthoringHooks& hooks) {
     logical_changed |= ImGui::InputInt("Logical height", &state.preview.height);
     state.preview.width = std::max(1, state.preview.width);
     state.preview.height = std::max(1, state.preview.height);
-    if (logical_changed && hooks.apply_preview) hooks.apply_preview(state.preview);
+    if (logical_changed) {
+        if (hooks.apply_preview) hooks.apply_preview(state.preview);
+        follow_logical_viewport(state, hooks);
+    }
 
     bool output_changed = false;
     output_changed |= ImGui::InputInt("Output width", &state.preview.output_width);
@@ -125,11 +156,24 @@ void draw_display_simulator(AuthoringUiState& state, AuthoringHooks& hooks) {
         state.preview.output_height = state.preview.height;
         if (hooks.apply_preview) hooks.apply_preview(state.preview);
     }
+
     ImGui::SeparatorText("Desktop host window");
-    ImGui::TextWrapped("Device presets are fitted inside the existing window. They never resize "
-                       "the desktop window automatically.");
-    if (ImGui::Button("Resize host to logical viewport") && hooks.resize_host_window)
-        hooks.resize_host_window(state.preview.width, state.preview.height);
+    ImGui::TextWrapped("Device presets fit inside the host unless following is enabled.");
+    if (hooks.host_window_size) {
+        const auto [host_width, host_height] = hooks.host_window_size();
+        ImGui::Text("Current host: %d x %d", host_width, host_height);
+    }
+    const bool fraction_changed =
+        ImGui::DragFloat("Logical size fraction", &state.host_logical_fraction, 0.05f, 0.1f,
+                         4.0f, "%.2fx");
+    if (ImGui::Checkbox("Follow logical viewport", &state.host_follows_logical) &&
+        state.host_follows_logical)
+        resize_host_from_logical(state, hooks);
+    if (fraction_changed && state.host_follows_logical)
+        resize_host_from_logical(state, hooks);
+    if (ImGui::Button("Apply logical fraction")) resize_host_from_logical(state, hooks);
+    ImGui::SameLine();
+    if (ImGui::Button("Match aspect only")) match_host_aspect(state, hooks);
     ImGui::End();
 }
 

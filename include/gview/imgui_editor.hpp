@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <optional>
+#include <utility>
 
 namespace gview {
 
@@ -19,6 +20,7 @@ struct AuthoringHooks {
     std::function<void(int)> select_state;
     std::function<void(int)> select_scenario;
     std::function<void(const PreviewConfig&)> apply_preview;
+    std::function<std::pair<int, int>()> host_window_size;
     std::function<void(int, int)> resize_host_window;
     std::function<void()> rebuild;
     std::function<std::string()> metrics;
@@ -38,6 +40,8 @@ struct AuthoringUiState {
     bool show_ids = false;
     bool show_grid = false;
     bool group_link_authoring = false;
+    bool host_follows_logical = false;
+    float host_logical_fraction = 1.0f;
     NavAction edge_action = NavAction::Right;
     std::string edge_source;
     std::string edge_target;

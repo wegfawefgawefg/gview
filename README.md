@@ -124,7 +124,9 @@ rather than replacing it with a detached schematic:
 - Thirty-six display presets with separate logical/physical size, device pixel
   ratio, UI scale, form factor, safe area, fit/sampling, zoom, and pan. Presets
   remain fitted inside the desktop host window; host resizing is an explicit
-  separate tool action.
+  separate tool action with logical-size fractions, optional following, and
+  aspect-only matching. ImGui stays in host coordinates above the simulated
+  canvas, so retro and high-density presets never scale or disable the tools.
 - Layout, presentation, control, binding, action, and style property editing.
 - Container-subtree focus scopes: select a list, grid, tab strip, toolbar, or
   detail pane once instead of assigning each materialized item separately.
